@@ -1,13 +1,7 @@
 #!/bin/bash
-# Auto-deploy script for PostBoy
-# This script builds and automatically deploys to Cloudflare Pages
-
+# Build and deploy PostBoy to Cloudflare Pages.
+# Same as: npm run build
 set -e
-
-echo "🔨 Building PostBoy..."
+echo "Building and deploying PostBoy..."
 npm run build
-
-echo "🚀 Deploying to Cloudflare Pages..."
-wrangler pages deploy dist --project-name=postboy
-
-echo "✅ Deployment complete!"
+echo "Done."

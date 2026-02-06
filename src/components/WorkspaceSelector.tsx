@@ -9,6 +9,21 @@ export default function WorkspaceSelector() {
   const [showCreate, setShowCreate] = useState(false);
   const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceMetadata[]>([]);
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
+  const [isChoosingLocation, setIsChoosingLocation] = useState(false);
+
+  const handleChooseWorkspaceLocation = async () => {
+    if (isChoosingLocation) return;
+    setIsChoosingLocation(true);
+    try {
+      const rootHandle = await fileSystemManager.openWorkspace(true);
+      if (rootHandle) {
+        fileSystemManager.setProjectRootHandle(rootHandle);
+        await loadWorkspacesFromFileSystem();
+      }
+    } finally {
+      setIsChoosingLocation(false);
+    }
+  };
 
   const loadWorkspacesFromFileSystem = async () => {
     setIsLoadingWorkspaces(true);
@@ -207,6 +222,36 @@ export default function WorkspaceSelector() {
       </div>
 
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/60 p-8 max-w-2xl w-full relative z-10">
+        {/* Choose Workspace Location - icon top right with tooltip (folder + location) */}
+        <div className="absolute top-4 right-4 flex items-center">
+          <button
+            type="button"
+            onClick={handleChooseWorkspaceLocation}
+            disabled={isChoosingLocation}
+            title="Choose Workspace Location"
+            className="group/btn flex items-center justify-center w-11 h-9 rounded-lg border border-slate-200/80 bg-slate-50/80 hover:bg-emerald-50 hover:border-emerald-200/80 text-slate-600 hover:text-emerald-700 transition-all duration-200 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-emerald-400/40 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isChoosingLocation ? (
+              <svg className="animate-spin w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            ) : (
+              <span className="flex items-center gap-0.5">
+                <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}>
+                  <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                <svg className="w-4 h-4 shrink-0 text-emerald-600" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z" />
+                </svg>
+              </span>
+            )}
+          </button>
+          <span className="pointer-events-none absolute right-12 left-auto top-1/2 -translate-y-1/2 px-2.5 py-1.5 text-xs font-medium bg-slate-800 text-white rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-20">
+            Choose Workspace Location
+          </span>
+        </div>
+
         {/* Hero with API illustration */}
         <div className="mb-6">
           <div className="flex items-center gap-4 mb-4">
@@ -296,7 +341,7 @@ export default function WorkspaceSelector() {
                   <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                   </svg>
-                  No workspaces found. Create one to get started.
+                  No workspaces found. Create one to get started.. or choose an existing location
                 </div>
               )}
             </div>

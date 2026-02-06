@@ -4,14 +4,32 @@ import { useCollectionsStore } from './stores/collectionsStore';
 import { useEnvironmentsStore } from './stores/environmentsStore';
 import Layout from './components/Layout';
 import WorkspaceSelector from './components/WorkspaceSelector';
+import { fileSystemManager } from './utils/fileSystem';
 
 function App() {
   const { isOpen } = useWorkspaceStore();
   const { loadCollections } = useCollectionsStore();
   const { loadEnvironments } = useEnvironmentsStore();
 
-  // Don't auto-open workspace - let user choose
-  // Auto-opening requires directory picker which interrupts user experience
+  // Restore saved project directory from config (IndexedDB) on app load
+  // so the user isn't prompted again when creating or opening a workspace
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (fileSystemManager.getProjectRootHandle()) return;
+      const { getRootDirectoryHandle } = await import('./utils/directoryHandleStorage');
+      const savedHandle = await getRootDirectoryHandle();
+      if (!cancelled && savedHandle) {
+        try {
+          await savedHandle.getDirectoryHandle('.', { create: false });
+          fileSystemManager.setProjectRootHandle(savedHandle as any);
+        } catch {
+          // Permission revoked or handle invalid – leave cleared so openWorkspace() will re-prompt
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (isOpen) {

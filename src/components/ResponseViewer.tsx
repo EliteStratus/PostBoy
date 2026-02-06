@@ -213,6 +213,7 @@ export default function ResponseViewer({ response, error }: ResponseViewerProps)
                   readOnly: true,
                   minimap: { enabled: false },
                   fontSize: 14,
+                  lineNumbersMinChars: 3,
                   wordWrap: viewMode === 'raw' ? 'on' : 'off',
                 }}
               />

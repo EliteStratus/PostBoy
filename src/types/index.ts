@@ -34,6 +34,23 @@ export interface Folder {
   requests: Request[];
 }
 
+export type AuthType = 'inherit' | 'none' | 'basic' | 'bearer' | 'oauth2' | 'api-key';
+
+export interface RequestAuth {
+  type: AuthType;
+  /** Basic Auth */
+  username?: string;
+  password?: string;
+  /** Bearer Token */
+  token?: string;
+  /** OAuth 2.0 (Bearer-style token for now) */
+  oauth2Token?: string;
+  /** API Key */
+  apiKeyKey?: string;
+  apiKeyValue?: string;
+  apiKeyAddTo?: 'header' | 'query';
+}
+
 export interface Request {
   name: string;
   description?: string;
@@ -42,6 +59,7 @@ export interface Request {
   headers: Header[];
   queryParams: QueryParam[];
   body?: RequestBody;
+  auth?: RequestAuth;
   preRequestScript?: string;
   postResponseScript?: string;
 }

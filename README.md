@@ -46,13 +46,13 @@ npm run dev
 
 Open `http://localhost:5173` in your browser.
 
-### Build
+### Build and deploy
 
 ```bash
 npm run build
 ```
 
-**Rule:** `npm run build` always builds and deploys to Cloudflare Pages. For a local build only (no deploy), use `npm run build:only`.
+Builds the app and deploys to Cloudflare Pages. For a local build only (e.g. for CI or preview), use `npm run build:only`. See `docs/DEPLOYMENT.md` for all options.
 
 ## Usage
 
@@ -93,35 +93,7 @@ npm run build
 
 ## Deployment
 
-PostBoy is configured for **Cloudflare Pages** deployment.
-
-### Quick Deploy to Cloudflare Pages
-
-**Option 1: Dashboard (Recommended)**
-1. Go to https://pages.cloudflare.com
-2. Click "Create a project" → "Connect to Git"
-3. Select your repository
-4. Build settings:
-   - Framework preset: Vite
-   - Build command: `npm run build`
-   - Build output directory: `dist`
-5. Click "Save and Deploy"
-
-**Option 2: Wrangler CLI**
-```bash
-npm install -g wrangler
-wrangler login
-wrangler pages deploy dist --project-name=postboy
-```
-
-**Option 3: Upload Assets**
-1. Run `npm run build` locally
-2. Go to Cloudflare Pages → Create project → Upload assets
-3. Drag and drop the `dist` folder
-
-See `docs/CLOUDFLARE_DEPLOY.md` for detailed instructions.
-
-No backend configuration needed.
+PostBoy deploys to **Cloudflare Pages**. From your machine, run `npm run build` to build and deploy. For Git-based or upload-based deployment, see **`docs/DEPLOYMENT.md`** for the full guide (scripts reference, dashboard setup, GitHub Actions, custom domain).
 
 ## License
 

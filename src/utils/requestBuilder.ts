@@ -1,4 +1,4 @@
-import type { Request, Environment } from '../types';
+import type { Request, RequestAuth, Environment } from '../types';
 import { substituteVariables, type VariableContext } from './variableSubstitution';
 
 export interface BuiltRequest {
@@ -42,6 +42,28 @@ export function buildRequest(
       const value = substituteVariables(h.value, context);
       headers[key] = value;
     });
+
+  // Apply authorization
+  const auth: RequestAuth | undefined = request.auth?.type ? request.auth : { type: 'inherit' };
+  if (auth.type === 'basic' && auth.username != null) {
+    const username = substituteVariables(auth.username, context);
+    const password = substituteVariables(auth.password ?? '', context);
+    headers['Authorization'] = 'Basic ' + btoa(unescape(encodeURIComponent(username + ':' + password)));
+  } else if (auth.type === 'bearer' && auth.token != null) {
+    headers['Authorization'] = 'Bearer ' + substituteVariables(auth.token, context);
+  } else if (auth.type === 'oauth2' && auth.oauth2Token != null) {
+    headers['Authorization'] = 'Bearer ' + substituteVariables(auth.oauth2Token, context);
+  } else if (auth.type === 'api-key' && auth.apiKeyKey != null && auth.apiKeyValue != null) {
+    const key = substituteVariables(auth.apiKeyKey, context);
+    const value = substituteVariables(auth.apiKeyValue, context);
+    if (auth.apiKeyAddTo === 'query') {
+      const sep = url.includes('?') ? '&' : '?';
+      url += sep + encodeURIComponent(key) + '=' + encodeURIComponent(value);
+    } else {
+      headers[key] = value;
+    }
+  }
+  // inherit / none: no header added
 
   // Build body
   let body: string | FormData | undefined;
@@ -92,4 +114,29 @@ export function buildRequest(
     headers,
     body,
   };
+}
+
+/** Returns headers that will be added by auth (for readonly display in Headers tab). */
+export function getAuthHeaders(
+  request: Request,
+  environment?: Environment
+): Array<{ key: string; value: string }> {
+  const result: Array<{ key: string; value: string }> = [];
+  const context: VariableContext = { environment };
+  const auth: RequestAuth | undefined = request.auth?.type ? request.auth : { type: 'inherit' };
+  if (auth.type === 'basic' && auth.username != null) {
+    const username = substituteVariables(auth.username, context);
+    const password = substituteVariables(auth.password ?? '', context);
+    result.push({ key: 'Authorization', value: 'Basic ' + btoa(unescape(encodeURIComponent(username + ':' + password))) });
+  } else if (auth.type === 'bearer' && auth.token != null) {
+    result.push({ key: 'Authorization', value: 'Bearer ' + substituteVariables(auth.token, context) });
+  } else if (auth.type === 'oauth2' && auth.oauth2Token != null) {
+    result.push({ key: 'Authorization', value: 'Bearer ' + substituteVariables(auth.oauth2Token, context) });
+  } else if (auth.type === 'api-key' && auth.apiKeyKey != null && auth.apiKeyValue != null && auth.apiKeyAddTo !== 'query') {
+    result.push({
+      key: substituteVariables(auth.apiKeyKey, context),
+      value: substituteVariables(auth.apiKeyValue, context),
+    });
+  }
+  return result;
 }

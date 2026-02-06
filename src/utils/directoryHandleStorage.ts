@@ -1,5 +1,14 @@
-// Store and retrieve directory handles using IndexedDB
-// This allows us to remember the project root directory without prompting every time
+// Store and retrieve directory handles using IndexedDB.
+// This is the default configuration: the app always loads the project root from here.
+//
+// Where this configuration is stored:
+//   - Storage: browser IndexedDB
+//   - Database name: postboy-directory-handles
+//   - Object store: handles
+//   - Key: project-root
+//   - Value: FileSystemDirectoryHandle (the chosen project root folder)
+//
+// To inspect or clear: DevTools → Application → IndexedDB → postboy-directory-handles → handles.
 
 const DB_NAME = 'postboy-directory-handles';
 const DB_VERSION = 1;

@@ -24,6 +24,7 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
     getRequest,
     moveRequest,
     moveFolder,
+    moveFolderToCollection,
     reorderItems,
   } = useCollectionsStore();
   const { startRun } = useRunnerStore();
@@ -64,6 +65,7 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
     title: string;
     message: string;
     onConfirm: () => void;
+    typeToConfirm?: string;
   } | null>(null);
 
   // Focus folder rename input when entering rename mode (autoFocus can fail after context menu)
@@ -167,6 +169,7 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
       url: '',
       headers: [],
       queryParams: [],
+      auth: { type: 'inherit' },
     };
     await createRequest(collection, folder, newRequest);
     // Reload collections to get the new request
@@ -284,6 +287,7 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
       isOpen: true,
       title: `Delete ${type.charAt(0).toUpperCase() + type.slice(1)}`,
       message: `Are you sure you want to delete "${itemName}"? This action cannot be undone.`,
+      ...(type === 'collection' && { typeToConfirm: itemName }),
       onConfirm: async () => {
         setConfirmDialog(null);
         if (type === 'collection') {
@@ -418,25 +422,27 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
       }
       // Dropping directly on a request (no position) is no-op; use above/below instead
     } else if (type === 'folder') {
-      // Moving folder to different location
-      const fromPath = folder || [];
-      // If dropped on a folder, move into that folder
-      let toPath: string[];
-      if (targetType === 'folder' && targetFolderName) {
-        toPath = targetFolder ? [...targetFolder, targetFolderName] : [targetFolderName];
-      } else {
-        toPath = targetFolder || [];
-      }
-      // Don't allow moving folder into itself or its children
-      if (toPath.length > 0 && fromPath.length > 0) {
+      // Full path to the folder being moved (parent path + folder name)
+      const fromPath = folder ? [...folder, name] : [name];
+      // Where to place it: if dropped on a folder, put inside that folder; else root
+      const dropTargetPath = targetType === 'folder' && targetFolderName != null
+        ? (targetFolder ? [...targetFolder, targetFolderName] : [targetFolderName])
+        : [];
+      const toPath = [...dropTargetPath, name];
+      // Don't allow moving folder into itself or its children (same collection only)
+      if (collection === targetCollection && dropTargetPath.length > 0) {
         const fromPathStr = fromPath.join('/');
-        const toPathStr = toPath.join('/');
-        if (toPathStr.startsWith(fromPathStr + '/')) {
+        const toPathStr = dropTargetPath.join('/');
+        if (toPathStr === fromPathStr || toPathStr.startsWith(fromPathStr + '/')) {
           setDraggedItem(null);
           return;
         }
       }
-      await moveFolder(collection, fromPath, toPath);
+      if (targetCollection !== collection) {
+        await moveFolderToCollection(collection, fromPath, targetCollection, dropTargetPath);
+      } else {
+        await moveFolder(collection, fromPath, toPath);
+      }
     }
 
     setDraggedItem(null);
@@ -619,8 +625,9 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
         onCancel={() => setConfirmDialog(null)}
         danger={true}
         confirmText="Delete"
+        typeToConfirm={confirmDialog?.typeToConfirm}
       />
-      <div className="w-[276px] bg-bg-sidebar border-r border-border flex flex-col h-full shrink-0">
+      <div className="w-[271px] bg-bg-sidebar border-r border-border flex flex-col h-full shrink-0">
         <div className="p-4 border-b border-border bg-surface-secondary">
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-bold text-text-primary text-lg">Collections</h2>
@@ -669,13 +676,28 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
           {Object.entries(collections).map(([name, collection]) => {
             const isRenaming = renamingItem?.type === 'collection' && renamingItem.collection === name;
 
+            const isDropTargetRoot = draggedItem?.type === 'folder' && dragOverItem?.type === 'folder' && dragOverItem?.collection === name && dragOverItem?.folder === null && dragOverItem?.index === -1;
+
             return (
               <div key={name}>
                 <div
-                  className="flex items-center gap-2 py-2 px-4 hover:bg-primary-soft cursor-pointer font-semibold text-text-primary group"
+                  className={`flex items-center gap-2 py-2 px-4 hover:bg-primary-soft cursor-pointer font-semibold text-text-primary group ${isDropTargetRoot ? 'bg-primary-soft border-2 border-primary' : ''}`}
                   onClick={() => {
                     if (!isRenaming) {
                       toggleCollection(name);
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    if (draggedItem?.type === 'folder') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverItem({ type: 'folder', collection: name, folder: null, index: -1 });
+                    }
+                  }}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => {
+                    if (draggedItem?.type === 'folder') {
+                      handleDrop(e, 'folder', name, null, -1);
                     }
                   }}
                   onContextMenu={(e) => showContextMenu(e, 'collection', name)}

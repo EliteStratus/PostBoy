@@ -19,20 +19,12 @@
       "enabled": true
     }
   ],
-  "queryParams": [
-    {
-      "key": "Key1",
-      "value": "Val1",
-      "enabled": true
-    }
-  ],
+  "queryParams": [],
   "body": {
     "mode": "raw",
-    "raw": "{\n  \"bagTag\": \"7548457813\",\n  \"currentPage\": 0,\n  \"email\": \"\",\n  \"firstName\": \"\",\n  \"frequentFlyer\": \"\",\n  \"fromDate\": \"\",\n  \"lastName\": \"\",\n  \"mobilePhone\": \"\",\n  \"pnr\": \"\",\n  \"rowsPerPage\": 10,\n  \"sortBy\": \"pnr\",\n  \"sortDirection\": \"DESC\",\n  \"toDate\": \"\"\n}",
+    "raw": "{\n    \"bagTag\": \"7548457813\",\n    \"currentPage\": 0,\n    \"email\": \"\",\n    \"firstName\": \"\",\n    \"frequentFlyer\": \"\",\n    \"fromDate\": \"\",\n    \"lastName\": \"\",\n    \"mobilePhone\": \"\",\n    \"pnr\": \"\",\n    \"rowsPerPage\": 10,\n    \"sortBy\": \"pnr\",\n    \"sortDirection\": \"DESC\",\n    \"toDate\": \"\"\n}",
     "rawLanguage": "json"
   },
-  "postResponseScript": "",
-  "preRequestScript": "",
   "auth": {
     "type": "basic",
     "username": "{{username}}",

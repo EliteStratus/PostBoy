@@ -1,91 +1,88 @@
 # Deployment Guide
 
-PostBoy is a static web application hosted on **Cloudflare Pages**. This guide covers deployment and alternatives.
+PostBoy is a static web application hosted on **Cloudflare Pages**. This guide covers all deployment options.
 
-## Prerequisites
+## Scripts Reference
 
-- Built application (`npm run build`)
-- Git repository (optional, for CI/CD)
-- Cloudflare account
+| Command | Description |
+|--------|-------------|
+| `npm run build` | Build and deploy (runs `tsc`, `vite build`, then `wrangler pages deploy`). Use for local deploy. |
+| `npm run build:only` | Build only (no deploy). Use for CI or when you will deploy separately. |
+| `npm run deploy` | Deploy only (requires existing `dist/` from a previous build). |
+| `npm run dev` | Local development server. |
+| `npm run preview` | Preview production build locally at `http://localhost:4173`. |
 
-## Cloudflare Pages (Recommended)
+## Option A: Local build + deploy (Wrangler CLI)
 
-### Option A: Cloudflare Dashboard
+From your machine:
+
+```bash
+npm run build
+```
+
+This builds the app and deploys to Cloudflare Pages. Requires:
+
+- Wrangler CLI (included via project): `npx wrangler login` once
+- Cloudflare account and Pages project named `postboy`
+
+Alternatively: `./scripts/deploy.sh` (same as `npm run build`).
+
+## Option B: Cloudflare Dashboard – Connect to Git
 
 1. Go to [Cloudflare Pages](https://pages.cloudflare.com)
-2. Click "Create a project" → "Connect to Git"
+2. Create a project → **Connect to Git**
 3. Select your repository
 4. Build settings:
-   - Framework preset: **Vite**
-   - Build command: `npm run build`
-   - Build output directory: `dist`
-5. Click "Save and Deploy"
+   - **Build command:** `npm run build:only`
+   - **Build output directory:** `dist`
+   - **Root directory:** (leave empty)
+5. Save and deploy. Push to `main` (or your production branch) to trigger deploys.
 
-### Option B: Wrangler CLI
+**Note:** Use `build:only` so Cloudflare runs only the build; Cloudflare then uploads `dist/`. Do not use `npm run build` here (that would try to run Wrangler deploy in Cloudflare’s environment without your credentials).
 
-```bash
-npm install -g wrangler
-wrangler login
-wrangler pages deploy dist --project-name=postboy
-```
+## Option C: Cloudflare Dashboard – Upload assets
 
-Or use the project script:
+1. Locally: `npm run build:only`
+2. In Cloudflare Pages: Create project → **Upload assets**
+3. Upload the `dist/` folder. Your site is live (e.g. `https://postboy.pages.dev`).
 
-```bash
-npm run deploy
-```
+## Option D: GitHub Actions (CI/CD)
 
-### Option C: Upload Assets
+The repo includes `.github/workflows/deploy.yml` which:
 
-1. Run `npm run build` locally
-2. Go to Cloudflare Pages → Create project → Upload assets
-3. Drag and drop the `dist` folder
+- Runs on push to `main` or `master`
+- Runs `npm run build:only`, then deploys `dist/` via Cloudflare Pages action
 
-### SPA Routing
-
-The `public/_redirects` file is copied into `dist` and ensures all routes serve `index.html` on Cloudflare Pages.
-
-## Continuous Deployment
-
-The `.github/workflows/deploy.yml` file is configured for automatic deployment to Cloudflare Pages on push to `main`.
-
-Required secrets:
+**Required GitHub secrets:**
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-## Custom Domain
+## SPA routing
 
-In Cloudflare Pages: Project → Custom domains → Add domain.
+`public/_redirects` is copied into `dist/` so all routes serve `index.html` on Cloudflare Pages.
 
-## Build Verification
+## Custom domain
 
-Before deploying:
+In Cloudflare Pages: Project → **Custom domains** → Add domain. See `docs/CUSTOM_DOMAIN_SETUP.md` for details.
+
+## Verification
+
+Test the production build locally before deploying:
 
 ```bash
-npm run build
+npm run build:only
 npm run preview
 ```
 
-Visit `http://localhost:4173` to test the production build locally.
-
-## Environment Variables
-
-No environment variables are required for PostBoy. It runs entirely in the browser.
+Open `http://localhost:4173`.
 
 ## Troubleshooting
 
-### Build Fails
+- **Build fails:** Node.js 18+, `npm install`, then `npm run build:only`
+- **404 on routes:** Ensure `public/_redirects` exists with `/*    /index.html   200`
+- **File System API:** Requires HTTPS or localhost; otherwise the app uses the in-memory/ZIP fallback.
 
-- Ensure Node.js 18+ is installed
-- Run `npm install`
-- Check for TypeScript errors: `npm run build`
+## Environment variables
 
-### 404 on Client-Side Routes
-
-- Ensure `public/_redirects` is present so it is copied to `dist`
-- Rule should be: `/*    /index.html   200`
-
-### File System API Not Working
-
-- Expected when not on HTTPS or localhost; the app uses ZIP fallback automatically.
+None required for the app; it runs entirely in the browser.

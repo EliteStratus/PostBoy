@@ -133,25 +133,32 @@ export default function PostmanImport() {
     }
   }, []);
 
+  const dropBoxClass = `
+    bg-surface rounded-lg shadow border border-border
+    border-dashed p-4 text-center transition-colors
+    ${importing ? 'opacity-50 pointer-events-none' : 'cursor-pointer hover:border-primary hover:bg-surface-secondary'}
+  `;
+  const dropBoxActiveClass = 'border-primary bg-primary-soft';
+
   return (
-    <div className="px-6 pb-6">
-      <h2 className="text-xl font-bold mb-4">Import from Postman</h2>
-      
+    <div className="h-full flex flex-col items-center px-6 pb-6">
+      <h2 className="text-2xl font-bold text-text-primary mb-6">Import from Postman</h2>
+
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700">
+        <div className="mb-4 max-w-md w-full p-3 bg-surface border border-error rounded-lg text-error text-sm">
           {error}
         </div>
       )}
-      
+
       {success && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded text-green-700">
+        <div className="mb-4 max-w-md w-full p-3 bg-primary-soft border border-primary rounded-lg text-primary text-sm">
           {success}
         </div>
       )}
 
-      <div className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-text-primary mb-2">
+      <div className="space-y-4 max-w-md w-full">
+        <div className="bg-surface rounded-lg shadow border border-border p-4">
+          <label className="block text-sm font-bold text-text-primary mb-2">
             Import Collection (Postman v2.1)
           </label>
           <div
@@ -159,14 +166,7 @@ export default function PostmanImport() {
             onDragLeave={(e) => handleDrag(e, 'collection')}
             onDragOver={(e) => handleDrag(e, 'collection')}
             onDrop={(e) => handleDrop(e, 'collection')}
-            className={`
-              border-2 border-dashed rounded-lg p-8 text-center transition-colors
-              ${dragActive && dragType === 'collection'
-                ? 'border-primary bg-primary-soft'
-                : 'border-border hover:border-primary hover:bg-surface-secondary'
-              }
-              ${importing ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}
-            `}
+            className={`${dropBoxClass} ${dragActive && dragType === 'collection' ? dropBoxActiveClass : ''}`}
             onClick={() => collectionInputRef.current?.click()}
           >
             <input
@@ -177,9 +177,9 @@ export default function PostmanImport() {
               disabled={importing}
               className="hidden"
             />
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <svg
-                className="mx-auto h-12 w-12 text-text-muted"
+                className="mx-auto h-8 w-8 text-text-muted"
                 stroke="currentColor"
                 fill="none"
                 viewBox="0 0 48 48"
@@ -193,18 +193,15 @@ export default function PostmanImport() {
                 />
               </svg>
               <div className="text-sm text-text-secondary">
-                <span className="font-medium text-primary hover:text-primary-hover">
-                  Click to upload
-                </span>{' '}
-                or drag and drop
+                <span className="font-medium text-primary hover:text-primary-hover">Click to upload</span> or drag and drop
               </div>
               <p className="text-xs text-text-muted">JSON file (Postman v2.1 collection)</p>
             </div>
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-text-primary mb-2">
+        <div className="bg-surface rounded-lg shadow border border-border p-4">
+          <label className="block text-sm font-bold text-text-primary mb-2">
             Import Environment
           </label>
           <div
@@ -212,14 +209,7 @@ export default function PostmanImport() {
             onDragLeave={(e) => handleDrag(e, 'environment')}
             onDragOver={(e) => handleDrag(e, 'environment')}
             onDrop={(e) => handleDrop(e, 'environment')}
-            className={`
-              border-2 border-dashed rounded-lg p-8 text-center transition-colors
-              ${dragActive && dragType === 'environment'
-                ? 'border-primary bg-primary-soft'
-                : 'border-border hover:border-primary hover:bg-surface-secondary'
-              }
-              ${importing ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}
-            `}
+            className={`${dropBoxClass} ${dragActive && dragType === 'environment' ? dropBoxActiveClass : ''}`}
             onClick={() => environmentInputRef.current?.click()}
           >
             <input
@@ -230,9 +220,9 @@ export default function PostmanImport() {
               disabled={importing}
               className="hidden"
             />
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <svg
-                className="mx-auto h-12 w-12 text-text-muted"
+                className="mx-auto h-8 w-8 text-text-muted"
                 stroke="currentColor"
                 fill="none"
                 viewBox="0 0 48 48"
@@ -246,10 +236,7 @@ export default function PostmanImport() {
                 />
               </svg>
               <div className="text-sm text-text-secondary">
-                <span className="font-medium text-primary hover:text-primary-hover">
-                  Click to upload
-                </span>{' '}
-                or drag and drop
+                <span className="font-medium text-primary hover:text-primary-hover">Click to upload</span> or drag and drop
               </div>
               <p className="text-xs text-text-muted">JSON file (Postman environment)</p>
             </div>

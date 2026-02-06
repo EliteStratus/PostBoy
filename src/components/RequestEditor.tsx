@@ -4,11 +4,12 @@ import { useRequestStore } from '../stores/requestStore';
 import { useCollectionsStore } from '../stores/collectionsStore';
 import { useEnvironmentsStore } from '../stores/environmentsStore';
 import { executeRequest } from '../utils/httpExecutor';
-import type { Request, HttpMethod, RequestBody } from '../types';
+import { getAuthHeaders } from '../utils/requestBuilder';
+import type { Request, HttpMethod, RequestBody, AuthType } from '../types';
 import ResponseViewer from './ResponseViewer';
 import { VariableHighlight } from './VariableHighlight';
 
-type RequestPaneTab = 'query-params' | 'headers' | 'body' | 'scripts';
+type RequestPaneTab = 'query-params' | 'headers' | 'body' | 'authorization' | 'scripts';
 
 interface RequestEditorProps {
   collection?: string;
@@ -25,19 +26,36 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
   const [isNew, setIsNew] = useState(false);
   const [showMethodDropdown, setShowMethodDropdown] = useState(false);
   const [requestPaneTab, setRequestPaneTab] = useState<RequestPaneTab>('query-params');
-  const [responsePaneHeight, setResponsePaneHeight] = useState(320);
+  const [scriptTab, setScriptTab] = useState<'pre-request' | 'post-response'>('pre-request');
+  const RESPONSE_PANE_STORAGE_KEY = 'postboy-response-pane-height';
+  const [responsePaneHeight, setResponsePaneHeight] = useState(() => {
+    try {
+      const s = localStorage.getItem(RESPONSE_PANE_STORAGE_KEY);
+      if (s) {
+        const n = parseInt(s, 10);
+        if (!isNaN(n) && n >= 200 && n <= 600) return n;
+      }
+    } catch (_) {}
+    return 320;
+  });
   const [bodyEditorWidth, setBodyEditorWidth] = useState<number>(0);
   const [bodyEditorHeight, setBodyEditorHeight] = useState<number>(300);
+  const [scriptEditorWidth, setScriptEditorWidth] = useState<number>(0);
+  const [scriptEditorHeight, setScriptEditorHeight] = useState<number>(280);
   const bodyEditorContainerRef = useRef<HTMLDivElement>(null);
+  const scriptEditorContainerRef = useRef<HTMLDivElement>(null);
   const lastRawBodyRef = useRef<{ raw: string; rawLanguage: 'json' | 'xml' | 'text' }>({ raw: '', rawLanguage: 'json' });
+  const responsePaneHeightRef = useRef(responsePaneHeight);
 
   const handleResizerDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
     const startHeight = responsePaneHeight;
+    responsePaneHeightRef.current = startHeight;
     const onMove = (moveEvent: MouseEvent) => {
       const delta = startY - moveEvent.clientY;
       const newHeight = Math.min(600, Math.max(200, startHeight + delta));
+      responsePaneHeightRef.current = newHeight;
       setResponsePaneHeight(newHeight);
     };
     const onUp = () => {
@@ -45,6 +63,9 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
       document.removeEventListener('mouseup', onUp);
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
+      try {
+        localStorage.setItem(RESPONSE_PANE_STORAGE_KEY, String(responsePaneHeightRef.current));
+      } catch (_) {}
     };
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'ns-resize';
@@ -60,7 +81,10 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
     if (collection && requestName) {
       const req = getRequest(collection, folder || null, requestName);
       if (req) {
-        setRequest(req);
+        setRequest({
+          ...req,
+          auth: req.auth?.type ? req.auth : { type: 'inherit' },
+        });
         setCurrentRequest(req);
         setIsNew(false);
       }
@@ -72,6 +96,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
         url: '',
         headers: [],
         queryParams: [],
+        auth: { type: 'inherit' },
       };
       setRequest(newRequest);
       setCurrentRequest(newRequest);
@@ -106,6 +131,24 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
     setBodyEditorHeight(rect.height);
     return () => ro.disconnect();
   }, [requestPaneTab, request?.body?.mode]);
+
+  // Resize observer so Scripts editor resizes when response pane divider is moved
+  useEffect(() => {
+    const el = scriptEditorContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry?.contentRect) {
+        setScriptEditorWidth(entry.contentRect.width);
+        setScriptEditorHeight(entry.contentRect.height);
+      }
+    });
+    ro.observe(el);
+    const rect = el.getBoundingClientRect();
+    setScriptEditorWidth(rect.width);
+    setScriptEditorHeight(rect.height);
+    return () => ro.disconnect();
+  }, [requestPaneTab]);
 
   const handleSave = async () => {
     if (!request || !collection) return;
@@ -332,6 +375,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
         <div className="flex border-b border-border bg-surface shrink-0">
           {[
             { id: 'query-params' as const, label: 'Params' },
+            { id: 'authorization' as const, label: 'Authorization' },
             { id: 'headers' as const, label: 'Headers' },
             { id: 'body' as const, label: 'Body' },
             { id: 'scripts' as const, label: 'Scripts' },
@@ -351,7 +395,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
         </div>
 
         <div className="flex-1 flex flex-col min-h-0 overflow-auto p-4 min-w-0">
-          <div className={`flex flex-col min-h-0 w-full min-w-0 ${requestPaneTab === 'body' && request?.body?.mode === 'raw' ? 'flex-1' : ''}`}>
+          <div className={`flex flex-col min-h-0 w-full min-w-0 ${(requestPaneTab === 'body' && request?.body?.mode === 'raw') || requestPaneTab === 'scripts' || requestPaneTab === 'authorization' ? 'flex-1' : ''}`}>
             {requestPaneTab === 'query-params' && (
           <div>
             <h3 className="font-semibold mb-3 text-text-primary">Query Parameters</h3>
@@ -455,7 +499,35 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
             {requestPaneTab === 'headers' && (
           <div>
             <h3 className="font-semibold mb-3 text-text-primary">Headers</h3>
-            {/* Header row */}
+            {/* Readonly auth-derived headers */}
+            {(() => {
+              const authHeaders = getAuthHeaders(request, currentEnvironment || undefined);
+              return authHeaders.length > 0 ? (
+                <div className="mb-3">
+                  <p className="text-xs font-medium text-text-muted mb-1.5">From Authorization (read-only)</p>
+                  <div className="space-y-2">
+                    {authHeaders.map((h, i) => (
+                      <div key={`auth-${i}`} className="grid grid-cols-[1fr_1fr] gap-2 items-center">
+                        <input
+                          type="text"
+                          readOnly
+                          value={h.key}
+                          className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
+                        />
+                        <input
+                          type="text"
+                          readOnly
+                          value={h.value}
+                          className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-b border-border my-2" />
+                </div>
+              ) : null;
+            })()}
+            {/* Editable headers */}
             <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center pb-2 mb-2 text-sm font-medium text-text-secondary border-b border-border">
               <div className="w-9 h-9 flex items-center justify-center" aria-hidden="true" />
               <div>Key</div>
@@ -548,6 +620,246 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
               >
                 + Add Header
               </button>
+            </div>
+          </div>
+            )}
+
+            {requestPaneTab === 'authorization' && (
+          <div className="flex flex-1 min-h-0 gap-0 min-w-0">
+            {/* Left pane: Auth Type + description */}
+            <div className="flex flex-col border-r border-border bg-surface-secondary shrink-0 min-w-[16rem] w-[calc(24rem-5px)] max-w-full pl-4 pr-4 overflow-auto">
+              <label className="block text-sm font-medium text-text-primary mb-2 pt-0.5">Auth Type</label>
+              <select
+                value={request.auth?.type ?? 'inherit'}
+                onChange={(e) => {
+                  const type = e.target.value as AuthType;
+                  setRequest({
+                    ...request,
+                    auth: { ...(request.auth || { type: 'inherit' }), type, username: undefined, password: undefined, token: undefined, oauth2Token: undefined, apiKeyKey: undefined, apiKeyValue: undefined, apiKeyAddTo: undefined },
+                  });
+                }}
+                className="max-w-[14rem] w-full border border-input-border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-input-bg text-text-primary text-sm"
+              >
+                <option value="inherit">Inherit from parent</option>
+                <option value="none">No Auth</option>
+                <option value="basic">Basic Auth</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="oauth2">OAuth 2.0</option>
+                <option value="api-key">API Key</option>
+              </select>
+              <div className="mt-6 text-sm text-text-secondary leading-relaxed bg-surface/60 rounded-md pt-3 pr-3 pb-3 pl-[8px] border border-border/60 break-words min-w-0 [overflow-wrap:anywhere]">
+                {(!request.auth?.type || request.auth?.type === 'inherit') && (
+                  <>Resolves the effective auth at runtime by walking up the tree (Folder → Collection → Workspace) to find the nearest non-inherit auth config. Applies that auth as if set on this request (e.g. sets <span className="font-medium text-text-secondary">Authorization</span> header or query param). Only the resolved auth is transmitted.</>
+                )}
+                {request.auth?.type === 'none' && (
+                  <>Sends the request as defined (URL, headers, body) <span className="font-medium text-text-secondary">without adding</span> an Authorization header or auth-related query parameters.</>
+                )}
+                {request.auth?.type === 'bearer' && (
+                  <>Adds header: <code className="text-xs bg-surface px-1 rounded">Authorization: Bearer &lt;token&gt;</code>. The token can include variables (e.g. <code className="text-xs bg-surface px-1 rounded">{'{{accessToken}}'}</code>). Transmitted as an HTTP request header.</>
+                )}
+                {request.auth?.type === 'basic' && (
+                  <>Adds header: <code className="text-xs bg-surface px-1 rounded">Authorization: Basic &lt;base64(username:password)&gt;</code>. Builds <code className="text-xs bg-surface px-1 rounded">username:password</code> after variable substitution, UTF-8 encodes, Base64 encodes, and sets it as an HTTP request header.</>
+                )}
+                {request.auth?.type === 'api-key' && (
+                  <>Key/value credential (e.g. from API gateways). <span className="font-medium text-text-secondary">If Header:</span> adds <code className="text-xs bg-surface px-1 rounded">&lt;key&gt;: &lt;value&gt;</code> (e.g. <code className="text-xs bg-surface px-1 rounded">x-api-key: &lt;value&gt;</code>). <span className="font-medium text-text-secondary">If Query:</span> appends <code className="text-xs bg-surface px-1 rounded">?&lt;key&gt;=&lt;value&gt;</code> (URL-encoded). Values can use variables like <code className="text-xs bg-surface px-1 rounded">{'{{apiKey}}'}</code>.</>
+                )}
+                {request.auth?.type === 'oauth2' && (
+                  <>Uses the configured token to send an <span className="font-medium text-text-secondary">Authorization</span> header. Default: <code className="text-xs bg-surface px-1 rounded">Authorization: Bearer &lt;access_token&gt;</code>. Token type defaults to Bearer; header name defaults to Authorization. No token refresh or auth-code exchange in this version.</>
+                )}
+              </div>
+            </div>
+            {/* Right pane: attributes only (label | input in two columns) */}
+            <div className="flex-1 min-w-0 pl-4 overflow-auto flex flex-col items-end">
+              {request.auth?.type === 'basic' && (
+                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 items-center w-full min-w-0">
+                  <label className="text-sm font-medium text-text-primary">Username</label>
+                  <div className="relative bg-input-bg rounded border border-input-border focus-within:ring-2 focus-within:ring-primary h-9 min-w-0">
+                      <input
+                        type="text"
+                        value={request.auth.username ?? ''}
+                        onChange={(e) => {
+                          const wasFocused = document.activeElement === e.target;
+                          setRequest({ ...request, auth: { ...request.auth!, username: e.target.value } });
+                          if (wasFocused && e.target instanceof HTMLInputElement) {
+                            requestAnimationFrame(() => {
+                              e.target.focus();
+                              const len = e.target.value.length;
+                              e.target.setSelectionRange(len, len);
+                            });
+                          }
+                        }}
+                        placeholder="Username"
+                        className="w-full h-full rounded px-3 py-1.5 bg-transparent border-0 focus:outline-none relative z-10"
+                        style={{ color: 'transparent', caretColor: 'var(--color-text-primary)' }}
+                      />
+                      <div className="absolute inset-0 pointer-events-none px-3 py-1.5 flex items-center overflow-hidden z-20" style={{ color: 'var(--color-text-primary)' }}>
+                        {request.auth.username != null && request.auth.username !== '' ? (
+                          <VariableHighlight text={request.auth.username} context={variableContext} />
+                        ) : (
+                          <span style={{ color: 'var(--color-text-muted)' }}>Username</span>
+                        )}
+                      </div>
+                    </div>
+                  <label className="text-sm font-medium text-text-primary">Password</label>
+                  <div className="relative bg-input-bg rounded border border-input-border focus-within:ring-2 focus-within:ring-primary h-9 min-w-0">
+                      <input
+                        type="text"
+                        value={request.auth.password ?? ''}
+                        onChange={(e) => {
+                          const wasFocused = document.activeElement === e.target;
+                          setRequest({ ...request, auth: { ...request.auth!, password: e.target.value } });
+                          if (wasFocused && e.target instanceof HTMLInputElement) {
+                            requestAnimationFrame(() => {
+                              e.target.focus();
+                              const len = e.target.value.length;
+                              e.target.setSelectionRange(len, len);
+                            });
+                          }
+                        }}
+                        placeholder="Password"
+                        className="w-full h-full rounded px-3 py-1.5 bg-transparent border-0 focus:outline-none relative z-10"
+                        style={{ color: 'transparent', caretColor: 'var(--color-text-primary)' }}
+                      />
+                      <div className="absolute inset-0 pointer-events-none px-3 py-1.5 flex items-center overflow-hidden z-20" style={{ color: 'var(--color-text-primary)' }}>
+                        {request.auth.password != null && request.auth.password !== '' ? (
+                          <VariableHighlight text={request.auth.password} context={variableContext} />
+                        ) : (
+                          <span style={{ color: 'var(--color-text-muted)' }}>Password</span>
+                        )}
+                      </div>
+                    </div>
+                </div>
+              )}
+              {request.auth?.type === 'bearer' && (
+                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 items-center w-full min-w-0">
+                  <label className="text-sm font-medium text-text-primary">Token</label>
+                  <div className="relative bg-input-bg rounded border border-input-border focus-within:ring-2 focus-within:ring-primary h-9 min-w-0">
+                    <input
+                      value={request.auth.token ?? ''}
+                      onChange={(e) => {
+                        const wasFocused = document.activeElement === e.target;
+                        setRequest({ ...request, auth: { ...request.auth!, token: e.target.value } });
+                        if (wasFocused && e.target instanceof HTMLInputElement) {
+                          requestAnimationFrame(() => {
+                            e.target.focus();
+                            const len = e.target.value.length;
+                            e.target.setSelectionRange(len, len);
+                          });
+                        }
+                      }}
+                      placeholder="Bearer token"
+                      className="w-full h-full rounded px-3 py-1.5 bg-transparent border-0 focus:outline-none relative z-10"
+                      style={{ color: 'transparent', caretColor: 'var(--color-text-primary)' }}
+                    />
+                    <div className="absolute inset-0 pointer-events-none px-3 py-1.5 flex items-center overflow-hidden z-20" style={{ color: 'var(--color-text-primary)' }}>
+                      {request.auth.token ? (
+                        <VariableHighlight text={request.auth.token} context={variableContext} />
+                      ) : (
+                        <span style={{ color: 'var(--color-text-muted)' }}>Bearer token</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {request.auth?.type === 'oauth2' && (
+                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 items-center w-full min-w-0">
+                  <label className="text-sm font-medium text-text-primary">Access Token</label>
+                  <div className="relative bg-input-bg rounded border border-input-border focus-within:ring-2 focus-within:ring-primary h-9 min-w-0">
+                    <input
+                      value={request.auth.oauth2Token ?? ''}
+                      onChange={(e) => {
+                        const wasFocused = document.activeElement === e.target;
+                        setRequest({ ...request, auth: { ...request.auth!, oauth2Token: e.target.value } });
+                        if (wasFocused && e.target instanceof HTMLInputElement) {
+                          requestAnimationFrame(() => {
+                            e.target.focus();
+                            const len = e.target.value.length;
+                            e.target.setSelectionRange(len, len);
+                          });
+                        }
+                      }}
+                      placeholder="OAuth 2.0 access token"
+                      className="w-full h-full rounded px-3 py-1.5 bg-transparent border-0 focus:outline-none relative z-10"
+                      style={{ color: 'transparent', caretColor: 'var(--color-text-primary)' }}
+                    />
+                    <div className="absolute inset-0 pointer-events-none px-3 py-1.5 flex items-center overflow-hidden z-20" style={{ color: 'var(--color-text-primary)' }}>
+                      {request.auth.oauth2Token ? (
+                        <VariableHighlight text={request.auth.oauth2Token} context={variableContext} />
+                      ) : (
+                        <span style={{ color: 'var(--color-text-muted)' }}>OAuth 2.0 access token</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {request.auth?.type === 'api-key' && (
+                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 items-center w-full min-w-0">
+                  <label className="text-sm font-medium text-text-primary">Key</label>
+                  <div className="relative bg-input-bg rounded border border-input-border focus-within:ring-2 focus-within:ring-primary h-9 min-w-0">
+                      <input
+                        type="text"
+                        value={request.auth.apiKeyKey ?? ''}
+                        onChange={(e) => {
+                          const wasFocused = document.activeElement === e.target;
+                          setRequest({ ...request, auth: { ...request.auth!, apiKeyKey: e.target.value } });
+                          if (wasFocused && e.target instanceof HTMLInputElement) {
+                            requestAnimationFrame(() => {
+                              e.target.focus();
+                              const len = e.target.value.length;
+                              e.target.setSelectionRange(len, len);
+                            });
+                          }
+                        }}
+                        placeholder="e.g. X-API-Key"
+                        className="w-full h-full rounded px-3 py-1.5 bg-transparent border-0 focus:outline-none relative z-10"
+                        style={{ color: 'transparent', caretColor: 'var(--color-text-primary)' }}
+                      />
+                      <div className="absolute inset-0 pointer-events-none px-3 py-1.5 flex items-center overflow-hidden z-20" style={{ color: 'var(--color-text-primary)' }}>
+                        {request.auth.apiKeyKey != null && request.auth.apiKeyKey !== '' ? (
+                          <VariableHighlight text={request.auth.apiKeyKey} context={variableContext} />
+                        ) : (
+                          <span style={{ color: 'var(--color-text-muted)' }}>e.g. X-API-Key</span>
+                        )}
+                      </div>
+                    </div>
+                  <label className="text-sm font-medium text-text-primary">Value</label>
+                  <div className="relative bg-input-bg rounded border border-input-border focus-within:ring-2 focus-within:ring-primary h-9 min-w-0">
+                      <input
+                        value={request.auth.apiKeyValue ?? ''}
+                        onChange={(e) => {
+                          const wasFocused = document.activeElement === e.target;
+                          setRequest({ ...request, auth: { ...request.auth!, apiKeyValue: e.target.value } });
+                          if (wasFocused && e.target instanceof HTMLInputElement) {
+                            requestAnimationFrame(() => {
+                              e.target.focus();
+                              const len = e.target.value.length;
+                              e.target.setSelectionRange(len, len);
+                            });
+                          }
+                        }}
+                        placeholder="API key value"
+                        className="w-full h-full rounded px-3 py-1.5 bg-transparent border-0 focus:outline-none relative z-10"
+                        style={{ color: 'transparent', caretColor: 'var(--color-text-primary)' }}
+                      />
+                      <div className="absolute inset-0 pointer-events-none px-3 py-1.5 flex items-center overflow-hidden z-20" style={{ color: 'var(--color-text-primary)' }}>
+                        {request.auth.apiKeyValue ? (
+                          <VariableHighlight text={request.auth.apiKeyValue} context={variableContext} />
+                        ) : (
+                          <span style={{ color: 'var(--color-text-muted)' }}>API key value</span>
+                        )}
+                      </div>
+                    </div>
+                  <label className="text-sm font-medium text-text-primary">Add to</label>
+                  <select
+                      value={request.auth.apiKeyAddTo ?? 'header'}
+                      onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, apiKeyAddTo: e.target.value as 'header' | 'query' } })}
+                      className="w-full border border-input-border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-input-bg text-text-primary"
+                    >
+                      <option value="header">Header</option>
+                      <option value="query">Query Params</option>
+                    </select>
+                </div>
+              )}
             </div>
           </div>
             )}
@@ -680,6 +992,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                     options={{
                       minimap: { enabled: false },
                       fontSize: 14,
+                      lineNumbersMinChars: 3,
                     }}
                   />
                 </div>
@@ -847,42 +1160,53 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
             )}
 
             {requestPaneTab === 'scripts' && (
-          <div className="space-y-6">
-            <div>
-            <h3 className="font-semibold mb-2 text-text-primary">Pre-request Script</h3>
-            <div className="border border-input-border rounded bg-input-bg" style={{ height: '200px' }}>
+          <div className="flex flex-1 min-h-0 gap-0">
+            {/* Vertical tabs */}
+            <div className="flex flex-col border-r border-border bg-surface-secondary shrink-0 w-40">
+              <button
+                type="button"
+                onClick={() => setScriptTab('pre-request')}
+                className={`px-4 py-2.5 text-left text-sm font-medium border-l-2 transition-colors ${
+                  scriptTab === 'pre-request'
+                    ? 'border-primary text-text-primary bg-surface'
+                    : 'border-transparent text-text-secondary hover:text-text-primary hover:bg-surface'
+                }`}
+              >
+                Pre Request
+              </button>
+              <button
+                type="button"
+                onClick={() => setScriptTab('post-response')}
+                className={`px-4 py-2.5 text-left text-sm font-medium border-l-2 transition-colors ${
+                  scriptTab === 'post-response'
+                    ? 'border-primary text-text-primary bg-surface'
+                    : 'border-transparent text-text-secondary hover:text-text-primary hover:bg-surface'
+                }`}
+              >
+                Post Response
+              </button>
+            </div>
+            {/* Script editor */}
+            <div ref={scriptEditorContainerRef} className="flex-1 min-w-0 flex flex-col border border-input-border rounded bg-input-bg overflow-hidden min-h-[200px]">
               <Editor
-                height="200px"
+                width={scriptEditorWidth || '100%'}
+                height={scriptEditorHeight || 280}
                 language="javascript"
-                value={request.preRequestScript || ''}
+                value={scriptTab === 'pre-request' ? (request.preRequestScript || '') : (request.postResponseScript || '')}
                 onChange={(value: string | undefined) => {
-                  setRequest({ ...request, preRequestScript: value || '' });
+                  if (scriptTab === 'pre-request') {
+                    setRequest({ ...request, preRequestScript: value || '' });
+                  } else {
+                    setRequest({ ...request, postResponseScript: value || '' });
+                  }
                 }}
                 options={{
                   minimap: { enabled: false },
                   fontSize: 14,
+                  lineNumbersMinChars: 3,
                 }}
               />
             </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold mb-2 text-text-primary">Post-response Script</h3>
-            <div className="border border-input-border rounded bg-input-bg" style={{ height: '200px' }}>
-              <Editor
-                height="200px"
-                language="javascript"
-                value={request.postResponseScript || ''}
-                onChange={(value: string | undefined) => {
-                  setRequest({ ...request, postResponseScript: value || '' });
-                }}
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 14,
-                }}
-              />
-            </div>
-          </div>
           </div>
             )}
           </div>

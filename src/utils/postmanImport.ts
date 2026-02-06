@@ -1,4 +1,4 @@
-import type { Collection, Request, Folder, Environment } from '../types';
+import type { Collection, Request, Folder, Environment, RequestAuth } from '../types';
 
 // Postman v2.1 collection format types
 interface PostmanCollection {
@@ -18,6 +18,11 @@ interface PostmanItem {
   description?: string;
 }
 
+interface PostmanAuthParam {
+  key: string;
+  value?: string;
+}
+
 interface PostmanRequest {
   method: string;
   header?: PostmanHeader[];
@@ -26,7 +31,11 @@ interface PostmanRequest {
   description?: string;
   auth?: {
     type: string;
-    [key: string]: any;
+    basic?: PostmanAuthParam[];
+    bearer?: PostmanAuthParam[];
+    apikey?: PostmanAuthParam[];
+    oauth2?: PostmanAuthParam[];
+    [key: string]: PostmanAuthParam[] | string | undefined;
   };
 }
 
@@ -118,6 +127,45 @@ export function convertPostmanCollection(postmanCollection: PostmanCollection): 
   return collection;
 }
 
+function getAuthParam(params: PostmanAuthParam[] | undefined, key: string): string | undefined {
+  if (!params || !Array.isArray(params)) return undefined;
+  const entry = params.find((p) => p.key === key);
+  return entry?.value;
+}
+
+function convertPostmanAuth(pmAuth: PostmanRequest['auth']): RequestAuth | undefined {
+  if (!pmAuth || !pmAuth.type) return undefined;
+  const type = pmAuth.type.toLowerCase();
+  if (type === 'noauth') {
+    return { type: 'none' };
+  }
+  if (type === 'basic') {
+    const username = getAuthParam(pmAuth.basic, 'username');
+    const password = getAuthParam(pmAuth.basic, 'password');
+    return { type: 'basic', username: username ?? '', password: password ?? '' };
+  }
+  if (type === 'bearer') {
+    const token = getAuthParam(pmAuth.bearer, 'token');
+    return { type: 'bearer', token: token ?? '' };
+  }
+  if (type === 'oauth2') {
+    const token = getAuthParam(pmAuth.oauth2, 'accessToken') ?? getAuthParam(pmAuth.oauth2, 'token');
+    return { type: 'oauth2', oauth2Token: token ?? '' };
+  }
+  if (type === 'apikey') {
+    const key = getAuthParam(pmAuth.apikey, 'key');
+    const value = getAuthParam(pmAuth.apikey, 'value');
+    const inWhere = getAuthParam(pmAuth.apikey, 'in');
+    return {
+      type: 'api-key',
+      apiKeyKey: key ?? '',
+      apiKeyValue: value ?? '',
+      apiKeyAddTo: inWhere === 'query' ? 'query' : 'header',
+    };
+  }
+  return undefined;
+}
+
 function convertPostmanRequest(item: PostmanItem): Request {
   const pmRequest = item.request!;
   
@@ -155,12 +203,8 @@ function convertPostmanRequest(item: PostmanItem): Request {
       }))
     : [];
 
-  // Handle auth - convert basic auth to headers if present
-  if (pmRequest.auth && pmRequest.auth.type === 'basic') {
-    // Basic auth is typically handled by the browser, but we can add Authorization header
-    // Note: Postman handles this automatically, but we'll skip it for now
-    // as it requires base64 encoding which should be done in pre-request script if needed
-  }
+  // Convert auth from Postman format to our RequestAuth
+  const auth = convertPostmanAuth(pmRequest.auth);
 
   // Convert body
   let body: Request['body'];
@@ -202,6 +246,7 @@ function convertPostmanRequest(item: PostmanItem): Request {
     headers,
     queryParams,
     body,
+    auth: auth ?? { type: 'inherit' },
   };
 }
 

@@ -27,6 +27,7 @@ interface CollectionsState {
   getRequest: (collectionName: string, folderPath: string[] | null, requestName: string) => Request | null;
   moveRequest: (fromCollection: string, fromFolder: string[] | null, toCollection: string, toFolder: string[] | null, requestName: string) => Promise<void>;
   moveFolder: (collectionName: string, fromFolder: string[], toFolder: string[]) => Promise<void>;
+  moveFolderToCollection: (fromCollection: string, fromFolder: string[], toCollection: string, toFolderParent: string[]) => Promise<void>;
   reorderItems: (collectionName: string, folderPath: string[] | null, itemType: 'folder' | 'request', fromIndex: number, toIndex: number) => Promise<void>;
   setError: (error: string | null) => void;
 }
@@ -179,8 +180,12 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
   },
 
   deleteCollection: async (name: string) => {
-    // Note: File System API doesn't support recursive delete easily
-    // This would need to be implemented with recursive deletion
+    const collectionPath = getCollectionPath(name);
+    const deleted = await fileSystemManager.deleteDirectory(collectionPath);
+    if (!deleted) {
+      set(state => ({ ...state, error: `Failed to delete collection "${name}" from disk.` }));
+      return;
+    }
     const { collections } = get();
     const updated = { ...collections };
     delete updated[name];
@@ -778,6 +783,111 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
     );
 
     // Reload collections
+    await get().loadCollections();
+  },
+
+  moveFolderToCollection: async (fromCollection: string, fromFolder: string[], toCollection: string, toFolderParent: string[]) => {
+    const { collections } = get();
+    const fromCol = collections[fromCollection];
+    const toCol = collections[toCollection];
+    if (!fromCol || !toCol) return;
+
+    const folderName = fromFolder[fromFolder.length - 1];
+    if (!folderName) return;
+
+    // Find the folder to move in source collection
+    let sourceParent: Folder | Collection = fromCol;
+    for (let i = 0; i < fromFolder.length - 1; i++) {
+      const folders = 'folders' in sourceParent ? sourceParent.folders : (sourceParent as Collection).folders;
+      const found = folders?.find(f => f.name === fromFolder[i]);
+      if (found) sourceParent = found;
+    }
+    const folders = 'folders' in sourceParent ? sourceParent.folders : (sourceParent as Collection).folders;
+    const folderToMove = folders?.find(f => f.name === folderName);
+    if (!folderToMove) return;
+
+    const workspaceUtils = await import('../utils/workspace');
+    const oldFolderPath = workspaceUtils.getFolderPath(fromCollection, fromFolder);
+    const newFolderPath = workspaceUtils.getFolderPath(toCollection, [...toFolderParent, folderName]);
+
+    const allFiles: Array<{ path: string; content: string }> = [];
+
+    const folderJson = await fileSystemManager.readFile(workspaceUtils.getFolderJsonPath(fromCollection, fromFolder));
+    if (folderJson) {
+      allFiles.push({
+        path: workspaceUtils.getFolderJsonPath(toCollection, [...toFolderParent, folderName]),
+        content: folderJson,
+      });
+    }
+
+    try {
+      const requestFiles = await fileSystemManager.listDirectory(`${oldFolderPath}/requests`);
+      for (const file of requestFiles) {
+        const content = await fileSystemManager.readFile(`${oldFolderPath}/requests/${file}`);
+        if (content) {
+          allFiles.push({ path: `${newFolderPath}/requests/${file}`, content });
+        }
+      }
+    } catch {
+      // no requests
+    }
+
+    try {
+      const subfolders = await fileSystemManager.listDirectory(`${oldFolderPath}/folders`);
+      for (const subfolder of subfolders) {
+        const subfolderPath = [...fromFolder, subfolder];
+        const subfolderJson = await fileSystemManager.readFile(workspaceUtils.getFolderJsonPath(fromCollection, subfolderPath));
+        if (subfolderJson) {
+          allFiles.push({
+            path: workspaceUtils.getFolderJsonPath(toCollection, [...toFolderParent, folderName, subfolder]),
+            content: subfolderJson,
+          });
+        }
+        try {
+          const subReqFiles = await fileSystemManager.listDirectory(`${oldFolderPath}/folders/${subfolder}/requests`);
+          for (const reqFile of subReqFiles) {
+            const reqContent = await fileSystemManager.readFile(`${oldFolderPath}/folders/${subfolder}/requests/${reqFile}`);
+            if (reqContent) {
+              allFiles.push({
+                path: `${newFolderPath}/folders/${subfolder}/requests/${reqFile}`,
+                content: reqContent,
+              });
+            }
+          }
+        } catch {
+          // no requests
+        }
+      }
+    } catch {
+      // no subfolders
+    }
+
+    await fileSystemManager.createDirectory(newFolderPath);
+    await fileSystemManager.createDirectory(`${newFolderPath}/requests`);
+    await fileSystemManager.createDirectory(`${newFolderPath}/folders`);
+
+    for (const file of allFiles) {
+      await fileSystemManager.writeFile(file.path, file.content);
+    }
+
+    await fileSystemManager.deleteDirectory(oldFolderPath);
+
+    if ('folders' in sourceParent) {
+      sourceParent.folders = sourceParent.folders.filter(f => f.name !== folderName);
+    }
+    await fileSystemManager.writeFile(getCollectionJsonPath(fromCollection), JSON.stringify(fromCol, null, 2));
+
+    let targetParent: Folder | Collection = toCol;
+    for (const pathPart of toFolderParent) {
+      const targetFolders = 'folders' in targetParent ? targetParent.folders : (targetParent as Collection).folders;
+      const found = targetFolders?.find(f => f.name === pathPart);
+      if (found) targetParent = found;
+    }
+    if ('folders' in targetParent) {
+      targetParent.folders.push(folderToMove);
+    }
+    await fileSystemManager.writeFile(getCollectionJsonPath(toCollection), JSON.stringify(toCol, null, 2));
+
     await get().loadCollections();
   },
 

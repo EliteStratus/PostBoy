@@ -144,7 +144,7 @@ export default function Layout() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setView('request')}
-            className={`px-3 py-1 rounded text-base ${
+            className={`px-3 py-1 rounded text-sm ${
               view === 'request'
                 ? 'bg-primary text-white'
                 : 'bg-surface border border-border text-text-primary hover:bg-surface-secondary'
