@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Primary Colors */
+  --color-primary: #15803D;
+  --color-primary-hover: #14532D;
+  --color-primary-active: #0F5132;
+  --color-primary-soft: #DCFCE7;
+
+  /* Semantic Colors */
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-info: #38BDF8;
+
+  /* Background & Surface Colors */
+  --color-bg-app: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-sidebar: #F1F5F9;
+  --color-surface-secondary: #E2E8F0;
+  --color-border: #E5E7EB;
+
+  /* Typography Colors */
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94A3B8;
+  --color-text-disabled: #CBD5E1;
+
+  /* Input Colors */
+  --color-input-bg: #FFFFFF;
+  --color-input-border: #CBD5E1;
+  --color-input-focus: #15803D;
+  --color-input-placeholder: #94A3B8;
+
+  /* HTTP Method Colors */
+  --color-method-get: #0284C7;
+  --color-method-post: #22C55E;
+  --color-method-put: #F59E0B;
+  --color-method-patch: #A78BFA;
+  --color-method-delete: #EF4444;
+
+  /* Status Colors */
+  --color-status-2xx: #22C55E;
+  --color-status-3xx: #38BDF8;
+  --color-status-4xx: #F59E0B;
+  --color-status-5xx: #EF4444;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg-app);
+  color: var(--color-text-primary);
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Checkbox uses primary (brand) color */
+input[type="checkbox"] {
+  accent-color: var(--color-primary);
+}

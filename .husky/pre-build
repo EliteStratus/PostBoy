@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Auto-deploy after build hook
+
+# This hook runs after build completes
+# It automatically deploys to Cloudflare Pages
+
+echo "🚀 Auto-deploying to Cloudflare Pages..."
+wrangler pages deploy dist --project-name=netpost

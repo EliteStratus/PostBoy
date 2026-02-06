@@ -1,0 +1,26 @@
+{
+  "name": "C1",
+  "folders": [
+    {
+      "name": "F1",
+      "folders": [],
+      "requests": [
+        {
+          "name": "R2",
+          "method": "GET",
+          "url": "",
+          "headers": [],
+          "queryParams": []
+        },
+        {
+          "name": "C1R1",
+          "method": "GET",
+          "url": "",
+          "headers": [],
+          "queryParams": []
+        }
+      ]
+    }
+  ],
+  "requests": []
+}

@@ -1,0 +1,6 @@
+# PostBoy project rules
+
+## Deployment (mandatory)
+- **After any code change, always run `npm run build`** so the app is built and deployed to Cloudflare Pages.
+- In this project, `npm run build` = build + deploy (see package.json). There is no build-without-deploy for normal workflow.
+- If you make a change and do not run build, the user will not see it live. Always run `npm run build` after editing source files.

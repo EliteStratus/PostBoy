@@ -1,0 +1,46 @@
+{
+  "name": "NT Inbound",
+  "folders": [
+    {
+      "name": "Files",
+      "folders": [],
+      "requests": [
+        {
+          "name": "searchFile  | All 3 types",
+          "method": "GET",
+          "url": "{{url}}/nettracer/ws/api/files/search",
+          "headers": [
+            {
+              "key": "accept",
+              "value": "application/json",
+              "enabled": true
+            },
+            {
+              "key": "X-Auth-Companycode",
+              "value": "{{companyCode}}",
+              "enabled": true
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "enabled": true
+            }
+          ],
+          "queryParams": [
+            {
+              "key": "Key1",
+              "value": "Val1",
+              "enabled": true
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"bagTag\": \"7548457813\",\n  \"currentPage\": 0,\n  \"email\": \"\",\n  \"firstName\": \"\",\n  \"frequentFlyer\": \"\",\n  \"fromDate\": \"\",\n  \"lastName\": \"\",\n  \"mobilePhone\": \"\",\n  \"pnr\": \"\",\n  \"rowsPerPage\": 10,\n  \"sortBy\": \"pnr\",\n  \"sortDirection\": \"DESC\",\n  \"toDate\": \"\"\n}",
+            "rawLanguage": "json"
+          }
+        }
+      ]
+    }
+  ],
+  "requests": []
+}

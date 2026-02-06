@@ -1,0 +1,44 @@
+{
+  "name": "postboy",
+  "version": "1.0.0",
+  "description": "Postman-like API client that runs entirely in the browser",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && wrangler pages deploy dist --project-name=postboy",
+    "build:only": "tsc && vite build",
+    "deploy": "wrangler pages deploy dist --project-name=postboy",
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+  },
+  "keywords": [
+    "api",
+    "client",
+    "postman",
+    "http",
+    "rest"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@types/crypto-js": "^4.2.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "crypto-js": "^4.2.0",
+    "jszip": "^3.10.1",
+    "monaco-editor": "^0.49.0",
+    "postcss": "^8.4.47",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  }
+}
