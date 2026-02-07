@@ -1,6 +1,6 @@
 # PostBoy
 
-A Postman-like API client that runs entirely in the browser with no backend or database. All data is stored locally using the File System Access API or exported as ZIP/JSON files.
+A UI based API client that runs entirely in the browser with no backend or database. All data is stored locally using the File System Access API or exported as ZIP/JSON files.
 
 ## Features
 
