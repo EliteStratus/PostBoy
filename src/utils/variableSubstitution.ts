@@ -17,7 +17,7 @@ export function substituteVariables(
   return text.replace(variableRegex, (match, varName) => {
     const trimmed = varName.trim();
     
-    // Check environment variables first
+    // Check environment variables first (only enabled variables are used in requests)
     if (context.environment) {
       const envVar = context.environment.variables.find(
         v => v.key === trimmed && v.enabled
@@ -62,7 +62,7 @@ export function extractVariables(text: string): string[] {
 export function isVariableResolved(variableName: string, context: VariableContext): boolean {
   const trimmed = variableName.trim();
   
-  // Check environment variables first
+  // Check environment variables first (only enabled count as resolved for requests)
   if (context.environment) {
     const envVar = context.environment.variables.find(
       v => v.key === trimmed && v.enabled

@@ -7,6 +7,8 @@ import PostmanImport from './PostmanImport';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { useCollectionsStore } from '../stores/collectionsStore';
 import { useEnvironmentsStore } from '../stores/environmentsStore';
+import { useRequestTabCloseStore } from '../stores/requestTabCloseStore';
+import { requestTabId } from '../utils/requestTabId';
 import type { HttpMethod } from '../types';
 
 type View = 'request' | 'environment' | 'runner' | 'import';
@@ -18,10 +20,7 @@ export type RequestTab = {
   request: string;
 };
 
-function requestTabId(collection: string, folder: string[] | null, request: string): string {
-  const folderPart = (folder && folder.length > 0) ? folder.join('/') : '';
-  return `${collection}\n${folderPart}\n${request}`;
-}
+export { requestTabId };
 
 const getMethodColor = (method: HttpMethod): string => {
   switch (method) {
@@ -79,11 +78,64 @@ export default function Layout() {
   const { workspace, closeWorkspace } = useWorkspaceStore();
   const { getRequest } = useCollectionsStore();
   const { currentEnvironment } = useEnvironmentsStore();
+  const getTabState = useRequestTabCloseStore((s) => s.getTabState);
   const [view, setView] = useState<View>('request');
   const [tabs, setTabs] = useState<RequestTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
+  const [runnerPreselectedCollection, setRunnerPreselectedCollection] = useState<string | null>(null);
+  const [runnerPreselectedFolderPath, setRunnerPreselectedFolderPath] = useState<string[] | null>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
+
+  const handleNavigateToRunner = useCallback((collection: string, folderPath: string[] | null) => {
+    setRunnerPreselectedCollection(collection);
+    setRunnerPreselectedFolderPath(folderPath);
+    setView('runner');
+  }, []);
+
+  const performCloseTab = useCallback((id: string) => {
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      if (activeTabId === id) {
+        const idx = prev.findIndex((t) => t.id === id);
+        const newActive = idx > 0 ? prev[idx - 1].id : next[0]?.id ?? null;
+        setActiveTabId(newActive);
+      }
+      return next;
+    });
+  }, [activeTabId]);
+
+  const handleCloseTab = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const tabState = getTabState(id);
+    if (tabState?.isDirty) {
+      setPendingCloseTabId(id);
+      return;
+    }
+    performCloseTab(id);
+  }, [getTabState, performCloseTab]);
+
+  const handleCloseConfirmSave = useCallback(async () => {
+    if (!pendingCloseTabId) return;
+    const state = getTabState(pendingCloseTabId);
+    if (state?.save) {
+      await state.save();
+    }
+    performCloseTab(pendingCloseTabId);
+    setPendingCloseTabId(null);
+  }, [pendingCloseTabId, getTabState, performCloseTab]);
+
+  const handleCloseConfirmDontSave = useCallback(() => {
+    if (pendingCloseTabId) {
+      performCloseTab(pendingCloseTabId);
+      setPendingCloseTabId(null);
+    }
+  }, [pendingCloseTabId, performCloseTab]);
+
+  const handleCloseConfirmCancel = useCallback(() => {
+    setPendingCloseTabId(null);
+  }, []);
 
   const handleSelectRequest = useCallback((collection: string, folder: string[] | null, request: string) => {
     const id = requestTabId(collection, folder, request);
@@ -95,19 +147,6 @@ export default function Layout() {
     setActiveTabId(id);
     setView('request');
   }, []);
-
-  const handleCloseTab = useCallback((id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setTabs((prev) => {
-      const next = prev.filter((t) => t.id !== id);
-      if (activeTabId === id) {
-        const idx = prev.findIndex((t) => t.id === id);
-        const newActive = idx > 0 ? prev[idx - 1].id : next[0]?.id ?? null;
-        setActiveTabId(newActive);
-      }
-      return next;
-    });
-  }, [activeTabId]);
 
   const handleTabClick = useCallback((id: string) => {
     setActiveTabId(id);
@@ -195,7 +234,7 @@ export default function Layout() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar onSelectRequest={handleSelectRequest} />
+        <Sidebar onSelectRequest={handleSelectRequest} onNavigateToRunner={handleNavigateToRunner} />
         <main className="flex-1 flex flex-col overflow-hidden pt-6">
           {view === 'request' && (
             <>
@@ -265,10 +304,54 @@ export default function Layout() {
             </>
           )}
           {view === 'environment' && <EnvironmentEditor />}
-          {view === 'runner' && <CollectionRunner />}
+          {view === 'runner' && (
+            <CollectionRunner
+              preselectedCollection={runnerPreselectedCollection}
+              preselectedFolderPath={runnerPreselectedFolderPath}
+              onPreselectedConsumed={() => {
+                setRunnerPreselectedCollection(null);
+                setRunnerPreselectedFolderPath(null);
+              }}
+            />
+          )}
           {view === 'import' && <PostmanImport />}
         </main>
       </div>
+
+      {/* Save before close tab dialog */}
+      {pendingCloseTabId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={handleCloseConfirmCancel}>
+          <div
+            className="bg-surface rounded-lg shadow-xl p-6 max-w-md w-full mx-4 border border-border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-text-primary mb-2">Save changes?</h3>
+            <p className="text-text-secondary mb-4">
+              This request has unsaved changes. Save before closing?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleCloseConfirmCancel}
+                className="px-4 py-2 text-sm font-medium text-text-secondary bg-surface-secondary hover:bg-surface rounded border border-border"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCloseConfirmDontSave}
+                className="px-4 py-2 text-sm font-medium text-text-secondary bg-surface-secondary hover:bg-surface rounded border border-border"
+              >
+                Don&apos;t Save
+              </button>
+              <button
+                onClick={handleCloseConfirmSave}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary-hover rounded"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

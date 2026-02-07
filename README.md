@@ -4,16 +4,16 @@ A Postman-like API client that runs entirely in the browser with no backend or d
 
 ## Features
 
-- ✅ **No Backend Required**: Runs entirely in the browser
-- ✅ **Local File Storage**: Uses File System Access API for persistence
-- ✅ **ZIP Fallback**: Works in browsers without File System Access API support
-- ✅ **Collections & Folders**: Organize requests hierarchically
-- ✅ **Environments**: Manage environment variables
-- ✅ **Pre/Post Scripts**: JavaScript scripting with pm-lite API
-- ✅ **Collection Runner**: Execute multiple requests sequentially
-- ✅ **Postman Import**: Import Postman v2.1 collections and environments
-- ✅ **Monaco Editor**: Syntax highlighting for JSON, XML, JavaScript
-- ✅ **Response Viewer**: Pretty-print JSON, view headers, timing
+- **No backend**: Runs entirely in the browser; no server or database
+- **Local storage**: File System Access API for persistence; ZIP fallback when unsupported
+- **Collections & folders**: Organize requests in a tree; run from a collection or a folder
+- **Environments**: Variables with See/Hide (secrets), Enabled for substitution; create, edit, delete, import Postman
+- **Collection Runner**: Tree of requests (Select All / Deselect All, Expand All / Collapse All), iterations and delay; results with Success (2xx), Failed (4xx/5xx/network), Attention (1xx/3xx); collapsible Requests and Results panels
+- **Request editor**: Method, URL, headers, auth, body; save-before-close prompt when closing a dirty tab
+- **Pre/Post scripts**: JavaScript with pm-lite API in a Web Worker
+- **Postman import**: Postman v2.1 collections and environments
+- **Monaco Editor**: JSON, XML, JavaScript editing with syntax highlighting
+- **Response viewer**: Pretty-print body, headers, timing, size
 
 ## Tech Stack
 
@@ -56,12 +56,11 @@ Builds the app and deploys to Cloudflare Pages. For a local build only (e.g. for
 
 ## Usage
 
-1. **Open/Create Workspace**: Click "Open Workspace" to select a folder or create a new one
-2. **Create Collections**: Add collections to organize your API requests
-3. **Add Requests**: Create HTTP requests with methods, URLs, headers, and body
-4. **Set Environments**: Create environments with variables for different configurations
-5. **Run Requests**: Execute requests individually or run entire collections
-6. **Import from Postman**: Import your existing Postman collections and environments
+1. **Open workspace**: Choose a folder (or create one) for your workspace
+2. **Collections & folders**: Create collections and nested folders; add requests with method, URL, headers, auth, body
+3. **Environments**: Add environments and variables; use See/Hide for secrets; only enabled variables are substituted in requests
+4. **Run requests**: Run a single request from the editor, or open **Runner**, pick a collection (or run from a folder in the sidebar), select requests, then Run; view Success / Failed / Attention counts and clear results as needed
+5. **Import**: Use Postman import for v2.1 collections and environments
 
 ## Workspace Structure
 

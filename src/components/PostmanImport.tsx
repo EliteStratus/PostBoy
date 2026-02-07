@@ -5,7 +5,7 @@ import { importPostmanCollection, importPostmanEnvironment } from '../utils/post
 
 export default function PostmanImport() {
   const { createCollection, loadCollections, createRequest, createFolder } = useCollectionsStore();
-  const { createEnvironment, loadEnvironments } = useEnvironmentsStore();
+  const { createEnvironmentWithVariables, loadEnvironments } = useEnvironmentsStore();
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -69,16 +69,8 @@ export default function PostmanImport() {
 
     try {
       const environment = await importPostmanEnvironment(file);
-      await createEnvironment(environment.name);
-      
-      // Import variables
-      const envStore = useEnvironmentsStore.getState();
-      for (const variable of environment.variables) {
-        await envStore.addVariable(environment.name, variable);
-      }
-      
+      await createEnvironmentWithVariables(environment.name, environment.variables);
       await loadEnvironments();
-      
       setSuccess(`Environment "${environment.name}" imported successfully!`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import environment');

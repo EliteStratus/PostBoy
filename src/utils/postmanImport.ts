@@ -75,7 +75,9 @@ interface PostmanFormDataItem {
 
 interface PostmanVariable {
   key: string;
-  value: string;
+  value?: string;
+  /** Postman "Initial Value" - used when value is empty (e.g. for some secret exports). */
+  initialValue?: string;
   type?: string;
 }
 
@@ -256,12 +258,16 @@ export function convertPostmanEnvironment(postmanEnv: {
 }): Environment {
   return {
     name: postmanEnv.name,
-    variables: postmanEnv.values.map((v) => ({
-      key: v.key,
-      value: v.value || '',
-      type: v.type === 'secret' ? 'secret' : 'string',
-      enabled: true,
-    })),
+    variables: postmanEnv.values.map((v) => {
+      // Use value, then initialValue (Postman exports may put secret/current value in either)
+      const value = v.value ?? v.initialValue ?? '';
+      return {
+        key: v.key,
+        value,
+        type: v.type === 'secret' ? 'secret' : 'string',
+        enabled: true,
+      };
+    }),
   };
 }
 

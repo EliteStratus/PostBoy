@@ -3,11 +3,23 @@ import Editor from '@monaco-editor/react';
 import { useRequestStore } from '../stores/requestStore';
 import { useCollectionsStore } from '../stores/collectionsStore';
 import { useEnvironmentsStore } from '../stores/environmentsStore';
+import { useRequestTabCloseStore } from '../stores/requestTabCloseStore';
 import { executeRequest } from '../utils/httpExecutor';
 import { getAuthHeaders } from '../utils/requestBuilder';
+import { requestTabId } from '../utils/requestTabId';
 import type { Request, HttpMethod, RequestBody, AuthType } from '../types';
 import ResponseViewer from './ResponseViewer';
 import { VariableHighlight } from './VariableHighlight';
+
+function requestDeepEqual(a: Request | null, b: Request | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 
 type RequestPaneTab = 'query-params' | 'headers' | 'body' | 'authorization' | 'scripts';
 
@@ -21,6 +33,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
   const { getRequest, createRequest, updateRequest } = useCollectionsStore();
   const { getCurrentEnvironment } = useEnvironmentsStore();
   const { setCurrentRequest, setResponse, setExecuting, setError, isExecuting, response, error } = useRequestStore();
+  const { setTabState } = useRequestTabCloseStore();
   
   const [request, setRequest] = useState<Request | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -46,6 +59,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
   const scriptEditorContainerRef = useRef<HTMLDivElement>(null);
   const lastRawBodyRef = useRef<{ raw: string; rawLanguage: 'json' | 'xml' | 'text' }>({ raw: '', rawLanguage: 'json' });
   const responsePaneHeightRef = useRef(responsePaneHeight);
+  const saveCallbackRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   const handleResizerDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -150,23 +164,46 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
     return () => ro.disconnect();
   }, [requestPaneTab]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!request || !collection) return;
-    
     try {
       if (isNew) {
         await createRequest(collection, folder || null, request);
         setIsNew(false);
       } else {
-        // Pass the entire request object as updates to ensure all changes are saved
         await updateRequest(collection, folder || null, request.name, request);
       }
-      // Optionally show a success message or feedback
+      const tabId = requestTabId(collection, folder || null, request.name);
+      setTabState(tabId, { isDirty: false, save: () => saveCallbackRef.current?.() ?? Promise.resolve() });
     } catch (error) {
       console.error('Failed to save request:', error);
-      // Could show an error message to the user here
     }
-  };
+  }, [request, collection, folder, isNew, createRequest, updateRequest, setTabState]);
+
+  saveCallbackRef.current = handleSave;
+
+  // Register tab dirty/save state for close-without-save prompt
+  useEffect(() => {
+    if (!collection || !requestName || !request) return;
+    const tabId = requestTabId(collection, folder || null, requestName);
+    const savedRequest = getRequest(collection, folder || null, requestName) ?? null;
+    const normalizedSaved =
+      savedRequest && savedRequest.auth?.type
+        ? { ...savedRequest, auth: savedRequest.auth }
+        : savedRequest
+          ? { ...savedRequest, auth: { type: 'inherit' as const } }
+          : null;
+    const isDirty = isNew || !requestDeepEqual(request, normalizedSaved);
+    setTabState(tabId, {
+      isDirty,
+      save: async () => {
+        await saveCallbackRef.current?.();
+      },
+    });
+    return () => {
+      setTabState(tabId, null);
+    };
+  }, [collection, folder, requestName, request, isNew, getRequest, setTabState]);
 
   const handleExecute = async () => {
     if (!request) return;
@@ -498,36 +535,6 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
 
             {requestPaneTab === 'headers' && (
           <div>
-            <h3 className="font-semibold mb-3 text-text-primary">Headers</h3>
-            {/* Readonly auth-derived headers */}
-            {(() => {
-              const authHeaders = getAuthHeaders(request, currentEnvironment || undefined);
-              return authHeaders.length > 0 ? (
-                <div className="mb-3">
-                  <p className="text-xs font-medium text-text-muted mb-1.5">From Authorization (read-only)</p>
-                  <div className="space-y-2">
-                    {authHeaders.map((h, i) => (
-                      <div key={`auth-${i}`} className="grid grid-cols-[1fr_1fr] gap-2 items-center">
-                        <input
-                          type="text"
-                          readOnly
-                          value={h.key}
-                          className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
-                        />
-                        <input
-                          type="text"
-                          readOnly
-                          value={h.value}
-                          className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="border-b border-border my-2" />
-                </div>
-              ) : null;
-            })()}
-            {/* Editable headers */}
             <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center pb-2 mb-2 text-sm font-medium text-text-secondary border-b border-border">
               <div className="w-9 h-9 flex items-center justify-center" aria-hidden="true" />
               <div>Key</div>
@@ -535,6 +542,27 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
               <div className="w-9 h-9 flex items-center justify-center" aria-hidden="true" />
             </div>
             <div className="space-y-2">
+              {/* Auth-derived headers (read-only) in same table */}
+              {getAuthHeaders(request, currentEnvironment || undefined).map((h, i) => (
+                <div key={`auth-${i}`} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
+                  <div className="w-9 h-9 flex items-center justify-center">
+                    <input type="checkbox" checked readOnly disabled className="w-5 h-5 rounded border-input-border opacity-70" title="From Authorization (read-only)" />
+                  </div>
+                  <input
+                    type="text"
+                    readOnly
+                    value={h.key}
+                    className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
+                  />
+                  <input
+                    type="text"
+                    readOnly
+                    value={h.value}
+                    className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
+                  />
+                  <div className="w-9 h-9" aria-hidden="true" />
+                </div>
+              ))}
               {request.headers.map((header, index) => (
                 <div key={index} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
                   <label className="flex items-center justify-center w-9 h-9 cursor-pointer">

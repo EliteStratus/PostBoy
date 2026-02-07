@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Environment, EnvironmentVariable } from '../types';
 import { fileSystemManager } from '../utils/fileSystem';
+import { isSecretLikeKey } from '../utils/secretLikeKey';
 import { getEnvironmentPath } from '../utils/workspace';
 
 interface EnvironmentsState {
@@ -11,6 +12,7 @@ interface EnvironmentsState {
 
   loadEnvironments: () => Promise<void>;
   createEnvironment: (name: string) => Promise<void>;
+  createEnvironmentWithVariables: (name: string, variables: EnvironmentVariable[]) => Promise<void>;
   updateEnvironment: (name: string, updates: Partial<Environment>) => Promise<void>;
   deleteEnvironment: (name: string) => Promise<void>;
   setCurrentEnvironment: (name: string | null) => Promise<void>;
@@ -38,7 +40,14 @@ export const useEnvironmentsStore = create<EnvironmentsState>((set, get) => ({
           const envName = file.replace('.env.json', '');
           const envJson = await fileSystemManager.readFile(getEnvironmentPath(envName));
           if (envJson) {
-            environments[envName] = JSON.parse(envJson);
+            const env: Environment = JSON.parse(envJson);
+            // Default variables with secret-like keys to Hide (masked); enabled stays as stored
+            env.variables = env.variables.map((v) =>
+              isSecretLikeKey(v.key)
+                ? { ...v, type: 'secret' as const }
+                : v
+            );
+            environments[envName] = env;
           }
         }
       }
@@ -79,6 +88,26 @@ export const useEnvironmentsStore = create<EnvironmentsState>((set, get) => ({
     }
   },
 
+  createEnvironmentWithVariables: async (name: string, variables: EnvironmentVariable[]) => {
+    try {
+      const variablesWithDefaults = variables.map((v) =>
+        isSecretLikeKey(v.key)
+          ? { ...v, type: 'secret' as const }
+          : v
+      );
+      const environment: Environment = { name, variables: variablesWithDefaults };
+      await fileSystemManager.writeFile(
+        getEnvironmentPath(name),
+        JSON.stringify(environment, null, 2)
+      );
+      set((state) => ({
+        environments: { ...state.environments, [name]: environment },
+      }));
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to create environment' });
+    }
+  },
+
   updateEnvironment: async (name: string, updates: Partial<Environment>) => {
     const { environments } = get();
     const environment = environments[name];
@@ -97,14 +126,37 @@ export const useEnvironmentsStore = create<EnvironmentsState>((set, get) => ({
 
   deleteEnvironment: async (name: string) => {
     const { environments } = get();
+    if (!environments[name]) return;
+
+    const path = getEnvironmentPath(name);
+    const deleted = await fileSystemManager.deleteFile(path);
+    if (!deleted) {
+      set({ error: 'Failed to delete environment file' });
+      return;
+    }
+
     const updated = { ...environments };
     delete updated[name];
-    
-    if (get().currentEnvironment === name) {
-      set({ currentEnvironment: null });
+    const wasCurrent = get().currentEnvironment === name;
+
+    set({
+      environments: updated,
+      ...(wasCurrent ? { currentEnvironment: null } : {}),
+      error: null,
+    });
+
+    if (wasCurrent) {
+      try {
+        const { useWorkspaceStore } = await import('./workspaceStore');
+        const workspace = useWorkspaceStore.getState().workspace;
+        if (workspace) {
+          workspace.currentEnvironment = null;
+          useWorkspaceStore.getState().saveWorkspace().catch(() => {});
+        }
+      } catch {
+        // Ignore
+      }
     }
-    
-    set({ environments: updated });
   },
 
   setCurrentEnvironment: async (name: string | null) => {

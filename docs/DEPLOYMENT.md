@@ -6,10 +6,10 @@ PostBoy is a static web application hosted on **Cloudflare Pages**. This guide c
 
 | Command | Description |
 |--------|-------------|
-| `npm run build` | Build and deploy (runs `tsc`, `vite build`, then `wrangler pages deploy`). Use for local deploy. |
-| `npm run build:only` | Build only (no deploy). Use for CI or when you will deploy separately. |
+| `npm run build` | Build and deploy (runs `tsc`, `vite build`, then `wrangler pages deploy`). Default workflow for local deploy. |
+| `npm run build:only` | Build only (no deploy). Use for CI or when deploying separately. |
 | `npm run deploy` | Deploy only (requires existing `dist/` from a previous build). |
-| `npm run dev` | Local development server. |
+| `npm run dev` | Local development server at `http://localhost:5173`. |
 | `npm run preview` | Preview production build locally at `http://localhost:4173`. |
 
 ## Option A: Local build + deploy (Wrangler CLI)

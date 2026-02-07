@@ -1,15 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { useCollectionsStore } from '../stores/collectionsStore';
-import { useRunnerStore } from '../stores/runnerStore';
 import type { Folder, Request } from '../types';
 import ContextMenu, { type ContextMenuOption } from './ContextMenu';
 import ConfirmDialog from './ConfirmDialog';
 
 interface SidebarProps {
   onSelectRequest: (collection: string, folder: string[] | null, request: string) => void;
+  onNavigateToRunner?: (collection: string, folderPath: string[] | null) => void;
 }
 
-export default function Sidebar({ onSelectRequest }: SidebarProps) {
+export default function Sidebar({ onSelectRequest, onNavigateToRunner }: SidebarProps) {
   const { 
     collections, 
     createCollection, 
@@ -27,7 +27,6 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
     moveFolderToCollection,
     reorderItems,
   } = useCollectionsStore();
-  const { startRun } = useRunnerStore();
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [showCreateCollection, setShowCreateCollection] = useState(false);
@@ -114,7 +113,7 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
         { label: 'Add Request', action: () => handleAddRequest(collection, null) },
         { label: 'Add Folder', action: () => handleAddFolder(collection, null) },
         { separator: true },
-        { label: 'Run', action: () => handleRun(collection) },
+        { label: 'Run', action: () => handleRun(collection, null) },
         { separator: true },
         { label: 'Rename', action: () => { setContextMenu(null); setTimeout(() => handleRename(type, collection, undefined, collections[collection].name), 0); }, shortcut: '⌘E' },
         { label: 'Duplicate', action: () => handleDuplicateCollection(collection), shortcut: '⌘D' },
@@ -129,7 +128,7 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
         { label: 'Add Request', action: () => handleAddRequest(collection, folder!) },
         { label: 'Add Folder', action: () => handleAddFolder(collection, folder!) },
         { separator: true },
-        { label: 'Run', action: () => handleRun(collection) },
+        { label: 'Run', action: () => handleRun(collection, folder) },
         { separator: true },
         { label: 'Rename', action: () => {
           const target = pendingFolderRenameRef.current;
@@ -187,8 +186,9 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
     setRenamingItem({ type: 'folder', collection, folder: folderPath, name: 'New Folder' });
   };
 
-  const handleRun = (collection: string) => {
-    startRun(collection);
+  const handleRun = (collection: string, folderPath: string[] | null) => {
+    setContextMenu(null);
+    onNavigateToRunner?.(collection, folderPath);
   };
 
   const handleRename = (type: 'collection' | 'folder' | 'request', collection: string, folder?: string[], name?: string) => {
@@ -204,6 +204,19 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
     if (!a && !b) return true;
     if (!a || !b) return false;
     return a.length === b.length && a.every((v, i) => v === b[i]);
+  };
+
+  /** Deep copy a folder (and all nested folders and requests) into a collection at parentPath. */
+  const deepCopyFolder = async (collection: string, parentPath: string[], folderData: Folder): Promise<void> => {
+    const newFolderName = `${folderData.name} (Copy)`;
+    await createFolder(collection, parentPath, newFolderName);
+    const newPath = [...parentPath, newFolderName];
+    for (const req of folderData.requests) {
+      await createRequest(collection, newPath, { ...req, name: `${req.name} (Copy)` });
+    }
+    for (const sub of folderData.folders) {
+      await deepCopyFolder(collection, newPath, sub);
+    }
   };
 
   const handleCopy = (type: 'request' | 'folder', collection: string, folder?: string[], request?: string) => {
@@ -237,8 +250,7 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
       const newRequest = { ...copiedItem.data, name: `${copiedItem.data.name} (Copy)` };
       await createRequest(collection, folder ?? null, newRequest);
     } else if (copiedItem.type === 'folder') {
-      // Paste folder (simplified - would need recursive copy)
-      await createFolder(collection, folder ?? [], `${copiedItem.data.name} (Copy)`);
+      await deepCopyFolder(collection, folder ?? [], copiedItem.data);
     }
   };
 
@@ -246,15 +258,15 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
     const coll = collections[collection];
     const newName = `${coll.name} (Copy)`;
     await createCollection(newName, coll.description);
-    // Copy all requests and folders
     for (const req of coll.requests) {
       await createRequest(newName, null, { ...req, name: `${req.name} (Copy)` });
     }
-    // Note: Nested folders are not duplicated; only top-level requests are copied.
+    for (const f of coll.folders) {
+      await deepCopyFolder(newName, [], f);
+    }
   };
 
   const handleDuplicateFolder = async (collection: string, folder: string[]) => {
-    // Find and duplicate folder
     const collectionData = collections[collection];
     let target: Folder | undefined;
     let current: Folder[] | typeof collectionData = collectionData;
@@ -265,7 +277,7 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
       }
     }
     if (target) {
-      await createFolder(collection, folder.slice(0, -1), `${target.name} (Copy)`);
+      await deepCopyFolder(collection, folder.slice(0, -1), target);
     }
   };
 
@@ -702,11 +714,6 @@ export default function Sidebar({ onSelectRequest }: SidebarProps) {
                   }}
                   onContextMenu={(e) => showContextMenu(e, 'collection', name)}
                 >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
-                    <path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" fill="#15803D" />
-                    <path d="M5 9h14v2H5V9z" fill="#14532D" />
-                    <path d="M7 5h6v2H7V5z" fill="#0F5132" />
-                  </svg>
                   <span className="text-text-secondary">
                     {expandedCollections.has(name) ? '▼' : '▶'}
                   </span>
