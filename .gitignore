@@ -31,3 +31,6 @@ dist-ssr
 
 # Deployment (Cloudflare)
 .wrangler
+
+# Workspace data (local collections, may contain secrets)
+workspaces/
