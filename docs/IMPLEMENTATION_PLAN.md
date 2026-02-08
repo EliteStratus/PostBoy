@@ -2,7 +2,9 @@
 
 ## Overview
 
-PostBoy is a Postman-like API client that runs entirely in the browser with no backend or database. All data is stored locally using the File System Access API or exported as ZIP/JSON files. For the current feature set and usage, see the main [README](../README.md).
+PostBoy is a Postman-like API client that runs entirely in the browser with no backend or database. All data is stored locally using the File System Access API or exported as ZIP/JSON files.
+
+**Current features:** See the main [README](../README.md) for the up-to-date feature list. Implemented areas include: collections & folders with context menu (Run, Export, Rename, Duplicate, Delete); environments with import/export; collection and folder export (v2.1 JSON); request editor with response per tab; cookies/session (credentials, proxy Cookie/Set-Cookie forwarding, response Headers/Cookies tabs); light/dark theme with teal accent and muted violet for Export. This document describes the original implementation plan; many phases are implemented.
 
 ## Architecture Overview
 
@@ -398,54 +400,19 @@ PostBoy is a Postman-like API client that runs entirely in the browser with no b
 
 ## Phase 4: Import/Export
 
-### 4.1 Postman Import
-**Priority**: Medium  
-**Estimated Time**: 6-8 hours
+### 4.1 v2.1 Collection & Environment Import
+**Status**: Implemented
 
-**Tasks**:
-- Implement Postman v2.1 collection import:
-  - Parse Postman collection JSON
-  - Convert to PostBoy format:
-    - Collections
-    - Folders
-    - Requests (method, URL, headers, body)
-    - Pre-request scripts
-    - Post-response scripts
-    - Environment variables
-  - Handle edge cases:
-    - Missing fields
-    - Invalid data
-    - Nested folders
-- Create import UI:
-  - File picker
-  - Import preview
-  - Conflict resolution
-  - Import progress
-- Validate imported data
-- Save imported collections to workspace
-
-**Deliverables**:
-- Postman v2.1 import functionality
-- Import UI
-- Data validation
-
----
+- v2.1 collection import: parse JSON, convert to PostBoy format (collections, folders, requests, auth, body, scripts), save to workspace
+- v2.1 environment import: variables with type (string/secret), enabled
+- Import UI: **Import** view with two tiles (collection, environment); file picker or drag-and-drop; JSON validation
 
 ### 4.2 Export Functionality
-**Priority**: Low  
-**Estimated Time**: 3-4 hours
+**Status**: Implemented
 
-**Tasks**:
-- Implement export options:
-  - Export collection as JSON
-  - Export environment as JSON
-  - Export entire workspace as ZIP
-- Add export UI
-- Include metadata in exports
-
-**Deliverables**:
-- Export functionality
-- Export UI
+- **Environments**: Export current environment or Export all (ZIP of v2.1 environment JSONs) from Environment view
+- **Collections & folders**: Right-click collection or folder in sidebar → **Export**; downloads v2.1 collection JSON (folder exports as a collection with that folder as root)
+- Exports use standard v2.1 schema for compatibility with common API clients
 
 ---
 

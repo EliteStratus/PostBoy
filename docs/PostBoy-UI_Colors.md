@@ -173,14 +173,20 @@ colors: {
 
 ---
 
-## 12. Dark Mode (Future)
+## 12. Dark Mode
 
-- Not part of Option 1
-- Keep all colors tokenized to enable dark mode later without refactor
+- Implemented: `[data-theme="dark"]` overrides; primary becomes teal accent (`#14b8a6`); surfaces and text use dark palette
+- All colors are tokenized via CSS variables
+
+## 13. Accent Colors (Context Menu & Actions)
+
+- **Muted Violet** (e.g. Export): Light `#6d5a8c`, Dark `#a78bc4` — used for Export menu item and similar accents
+- **Run**: Success green (`text-success`) for the Run action in context menus
+- **Delete**: Error red (`text-error`) for destructive actions
 
 ---
 
-## 13. Acceptance Checklist
+## 14. Acceptance Checklist
 
 - [ ] Send button is visually dominant
 - [ ] Sidebar does not overpower main content

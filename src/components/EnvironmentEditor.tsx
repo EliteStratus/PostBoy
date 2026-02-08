@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useEnvironmentsStore } from '../stores/environmentsStore';
 import type { EnvironmentVariable } from '../types';
 import { isSecretLikeKey } from '../utils/secretLikeKey';
+import { exportEnvironmentToPostman } from '../utils/postmanImport';
 
 export default function EnvironmentEditor() {
   const {
@@ -59,19 +60,74 @@ export default function EnvironmentEditor() {
   };
 
   const currentEnv = currentEnvironment ? environments[currentEnvironment] : null;
+  const envCount = Object.keys(environments).length;
+
+  const handleExportCurrent = () => {
+    if (!currentEnv) return;
+    const json = exportEnvironmentToPostman(currentEnv);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${currentEnv.name.replace(/[^a-zA-Z0-9-_]/g, '_')}.postman_environment.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportAll = async () => {
+    if (envCount === 0) return;
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    for (const name of Object.keys(environments).sort()) {
+      const env = environments[name];
+      const json = exportEnvironmentToPostman(env);
+      zip.file(`${env.name.replace(/[^a-zA-Z0-9-_]/g, '_')}.postman_environment.json`, json);
+    }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'postboy-environments.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="h-full flex flex-col px-6 pb-6">
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold text-text-primary">Environments</h2>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="bg-primary text-on-primary w-9 h-9 flex items-center justify-center rounded hover:bg-primary-hover font-medium text-lg"
-            title="New environment"
-          >
-            +
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportCurrent}
+              disabled={!currentEnv}
+              className="w-9 h-9 flex items-center justify-center rounded bg-surface border border-border text-text-primary hover:bg-surface-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Export current environment"
+              aria-label="Export current environment"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+            </button>
+            <button
+              onClick={handleExportAll}
+              disabled={envCount === 0}
+              className="w-9 h-9 flex items-center justify-center rounded bg-surface border border-border text-text-primary hover:bg-surface-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Export all environments as ZIP"
+              aria-label="Export all environments"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-.98.626-1.813 1.5-2.122" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="bg-primary text-on-primary w-9 h-9 flex items-center justify-center rounded hover:bg-primary-hover font-medium text-lg"
+              title="New environment"
+            >
+              +
+            </button>
+          </div>
         </div>
 
         {showCreate && (

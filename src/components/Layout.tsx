@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from './Sidebar';
 import RequestEditor from './RequestEditor';
 import EnvironmentEditor from './EnvironmentEditor';
@@ -22,6 +22,24 @@ export type RequestTab = {
 };
 
 export { requestTabId };
+
+const SIDEBAR_WIDTH_KEY = 'postboy-sidebar-width';
+const SIDEBAR_WIDTH_DEFAULT = 280;
+const SIDEBAR_WIDTH_MIN = 200;
+const SIDEBAR_WIDTH_MAX = 600;
+
+function getStoredSidebarWidth(): number {
+  try {
+    const v = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    if (v != null) {
+      const n = parseInt(v, 10);
+      if (Number.isFinite(n) && n >= SIDEBAR_WIDTH_MIN && n <= SIDEBAR_WIDTH_MAX) return n;
+    }
+  } catch {
+    /* ignore */
+  }
+  return SIDEBAR_WIDTH_DEFAULT;
+}
 
 const getMethodColor = (method: HttpMethod): string => {
   switch (method) {
@@ -87,8 +105,40 @@ export default function Layout() {
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
   const [runnerPreselectedCollection, setRunnerPreselectedCollection] = useState<string | null>(null);
   const [runnerPreselectedFolderPath, setRunnerPreselectedFolderPath] = useState<string[] | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(getStoredSidebarWidth);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
+
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    sidebarResizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const ref = sidebarResizeRef.current;
+      if (!ref) return;
+      const delta = moveEvent.clientX - ref.startX;
+      const next = Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, ref.startWidth + delta));
+      sidebarResizeRef.current = { startX: moveEvent.clientX, startWidth: next };
+      setSidebarWidth(next);
+    };
+    const onUp = () => {
+      const w = sidebarResizeRef.current?.startWidth;
+      sidebarResizeRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      if (w != null) {
+        try {
+          localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w));
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp, { once: true });
+  }, [sidebarWidth]);
 
   const handleNavigateToRunner = useCallback((collection: string, folderPath: string[] | null) => {
     setRunnerPreselectedCollection(collection);
@@ -256,8 +306,26 @@ export default function Layout() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar onSelectRequest={handleSelectRequest} onNavigateToRunner={handleNavigateToRunner} />
-        <main className="flex-1 flex flex-col overflow-hidden pt-6">
+        <div
+          className="shrink-0 flex flex-col overflow-hidden border-r border-border"
+          style={{ width: sidebarWidth, minWidth: SIDEBAR_WIDTH_MIN, maxWidth: SIDEBAR_WIDTH_MAX }}
+        >
+          <Sidebar onSelectRequest={handleSelectRequest} onNavigateToRunner={handleNavigateToRunner} />
+        </div>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuenow={sidebarWidth}
+          aria-valuemin={SIDEBAR_WIDTH_MIN}
+          aria-valuemax={SIDEBAR_WIDTH_MAX}
+          tabIndex={0}
+          onMouseDown={handleSidebarResizeStart}
+          className="shrink-0 w-2 cursor-col-resize flex items-stretch justify-center group hover:bg-primary/20 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset select-none"
+          title="Drag to resize collections pane"
+        >
+          <span className="w-0.5 bg-border group-hover:bg-primary group-active:bg-primary transition-colors rounded-full" aria-hidden />
+        </div>
+        <main className="flex-1 min-w-0 flex flex-col overflow-hidden pt-6">
           {view === 'request' && (
             <>
               {tabs.length > 0 && (

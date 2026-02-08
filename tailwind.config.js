@@ -61,6 +61,8 @@ export default {
           '4xx': 'var(--color-status-4xx)',
           '5xx': 'var(--color-status-5xx)',
         },
+        // Accent
+        'muted-violet': 'var(--color-muted-violet)',
       },
       keyframes: {
         float: {

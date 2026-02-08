@@ -47,6 +47,9 @@
   --color-status-3xx: #38BDF8;
   --color-status-4xx: #F59E0B;
   --color-status-5xx: #EF4444;
+
+  /* Accent: Muted Violet (light mode — readable on light surfaces) */
+  --color-muted-violet: #6d5a8c;
 }
 
 /* Dark theme — token overrides only (teal accent) */
@@ -88,6 +91,9 @@
   --color-status-3xx: #38BDF8;
   --color-status-4xx: #F59E0B;
   --color-status-5xx: #F87171;
+
+  /* Accent: Muted Violet (dark mode — slightly brighter for contrast) */
+  --color-muted-violet: #a78bc4;
 }
 
 body {

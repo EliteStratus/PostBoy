@@ -134,7 +134,7 @@ export default function PostmanImport() {
 
   return (
     <div className="h-full flex flex-col items-center px-6 pb-6">
-      <h2 className="text-2xl font-bold text-text-primary mb-6">Import from Postman</h2>
+      <h2 className="text-2xl font-bold text-text-primary mb-6">Import</h2>
 
       {error && (
         <div className="mb-4 max-w-md w-full p-3 bg-surface border border-error rounded-lg text-error text-sm">
@@ -151,7 +151,7 @@ export default function PostmanImport() {
       <div className="space-y-12 max-w-md w-full">
         <div className="bg-surface rounded-lg shadow border border-border p-4">
           <label className="block text-sm font-bold text-text-primary mb-2">
-            Import Collection (Postman v2.1)
+            Import Collection (v2.1)
           </label>
           <div
             onDragEnter={(e) => handleDrag(e, 'collection')}
@@ -187,7 +187,7 @@ export default function PostmanImport() {
               <div className="text-sm text-text-secondary">
                 <span className="font-medium text-primary hover:text-primary-hover">Click to upload</span> or drag and drop
               </div>
-              <p className="text-xs text-text-muted">JSON file (Postman v2.1 collection)</p>
+              <p className="text-xs text-text-muted">JSON file (v2.1 collection)</p>
             </div>
           </div>
         </div>
@@ -230,7 +230,7 @@ export default function PostmanImport() {
               <div className="text-sm text-text-secondary">
                 <span className="font-medium text-primary hover:text-primary-hover">Click to upload</span> or drag and drop
               </div>
-              <p className="text-xs text-text-muted">JSON file (Postman environment)</p>
+              <p className="text-xs text-text-muted">JSON file (environment)</p>
             </div>
           </div>
         </div>

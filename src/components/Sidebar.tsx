@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useCollectionsStore } from '../stores/collectionsStore';
-import type { Folder, Request } from '../types';
+import type { Collection, Folder, Request } from '../types';
 import ContextMenu, { type ContextMenuOption } from './ContextMenu';
 import ConfirmDialog from './ConfirmDialog';
+import { exportCollectionToPostman, exportFolderAsCollection } from '../utils/postmanImport';
 
 interface SidebarProps {
   onSelectRequest: (collection: string, folder: string[] | null, request: string) => void;
@@ -96,6 +97,47 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
     }
   };
 
+  const getFolderAtPath = (coll: Collection, path: string[]): Folder | null => {
+    let current: Folder | Collection = coll;
+    for (const name of path) {
+      const folders = 'folders' in current ? current.folders : [];
+      const found = folders.find((f) => f.name === name);
+      if (!found) return null;
+      current = found;
+    }
+    return current as Folder;
+  };
+
+  const handleExportCollection = (collectionName: string) => {
+    setContextMenu(null);
+    const coll = collections[collectionName];
+    if (!coll) return;
+    const json = exportCollectionToPostman(coll);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${coll.name.replace(/[^a-zA-Z0-9-_]/g, '_')}.postman_collection.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportFolder = (collectionName: string, folderPath: string[]) => {
+    setContextMenu(null);
+    const coll = collections[collectionName];
+    if (!coll) return;
+    const folder = getFolderAtPath(coll, folderPath);
+    if (!folder) return;
+    const json = exportFolderAsCollection(folder);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${folder.name.replace(/[^a-zA-Z0-9-_]/g, '_')}.postman_collection.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const showContextMenu = (
     e: React.MouseEvent,
     type: 'collection' | 'folder' | 'request',
@@ -113,11 +155,12 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
         { label: 'Add Request', action: () => handleAddRequest(collection, null) },
         { label: 'Add Folder', action: () => handleAddFolder(collection, null) },
         { separator: true },
-        { label: 'Run', action: () => handleRun(collection, null) },
+        { label: 'Run', action: () => handleRun(collection, null), variant: 'run' },
         { separator: true },
         { label: 'Rename', action: () => { setContextMenu(null); setTimeout(() => handleRename(type, collection, undefined, collections[collection].name), 0); }, shortcut: '⌘E' },
         { label: 'Duplicate', action: () => handleDuplicateCollection(collection), shortcut: '⌘D' },
         { separator: true },
+        { label: 'Export', action: () => handleExportCollection(collection), variant: 'violet' },
         { label: 'Delete', action: () => handleDelete(type, collection), danger: true, shortcut: '⌘⌫' }
       );
     } else if (type === 'folder' && folder && folder.length > 0) {
@@ -128,7 +171,7 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
         { label: 'Add Request', action: () => handleAddRequest(collection, folder!) },
         { label: 'Add Folder', action: () => handleAddFolder(collection, folder!) },
         { separator: true },
-        { label: 'Run', action: () => handleRun(collection, folder) },
+        { label: 'Run', action: () => handleRun(collection, folder), variant: 'run' },
         { separator: true },
         { label: 'Rename', action: () => {
           const target = pendingFolderRenameRef.current;
@@ -142,6 +185,7 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
         { label: 'Paste', action: () => handlePaste(collection, folder), disabled: !copiedItem },
         { label: 'Duplicate', action: () => handleDuplicateFolder(collection, folder!), shortcut: '⌘D' },
         { separator: true },
+        { label: 'Export', action: () => handleExportFolder(collection, folder!), variant: 'violet' },
         { label: 'Delete', action: () => handleDelete(type, collection, folder), danger: true, shortcut: '⌘⌫' }
       );
     } else if (type === 'request') {
@@ -641,7 +685,7 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
         confirmText="Delete"
         typeToConfirm={confirmDialog?.typeToConfirm}
       />
-      <div className="w-[271px] bg-bg-sidebar border-r border-border flex flex-col h-full shrink-0">
+      <div className="w-full min-w-0 bg-bg-sidebar flex flex-col h-full shrink-0">
         <div className="p-4 border-b border-border bg-surface-secondary">
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-bold text-text-primary text-lg">Collections</h2>

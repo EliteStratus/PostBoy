@@ -7,6 +7,8 @@ export type ContextMenuOption =
       shortcut?: string;
       danger?: boolean;
       disabled?: boolean;
+      /** 'violet' = muted violet for Export, 'run' = success green for Run action */
+      variant?: 'violet' | 'run';
     }
   | {
       separator: true;
@@ -58,6 +60,13 @@ export default function ContextMenu({ options, position, onClose }: ContextMenuP
         }
 
         const menuOption = option as Exclude<ContextMenuOption, { separator: true }>;
+        const variantClass = menuOption.danger
+          ? 'text-error hover:bg-error/10'
+          : menuOption.variant === 'violet'
+            ? 'text-muted-violet hover:bg-muted-violet/10'
+            : menuOption.variant === 'run'
+              ? 'text-success hover:bg-success/10'
+              : 'text-text-primary';
 
         return (
           <button
@@ -71,7 +80,7 @@ export default function ContextMenu({ options, position, onClose }: ContextMenuP
             disabled={menuOption.disabled}
             className={`
               w-full text-left px-4 py-2 text-sm hover:bg-surface-secondary flex items-center justify-between
-              ${menuOption.danger ? 'text-error hover:bg-error/10' : 'text-text-primary'}
+              ${variantClass}
               ${menuOption.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
             `}
           >

@@ -302,3 +302,106 @@ export async function importPostmanEnvironment(file: File): Promise<Environment>
 
   return convertPostmanEnvironment(postmanEnv);
 }
+
+/** Export environment to standard v2.1 environment JSON (importable in common API clients). */
+export function exportEnvironmentToPostman(env: Environment): string {
+  const values = env.variables.map((v) => ({
+    key: v.key,
+    value: v.value,
+    type: v.type === 'secret' ? 'secret' : 'default',
+    enabled: v.enabled,
+  }));
+  const payload = {
+    id: crypto.randomUUID?.() ?? `env-${Date.now()}`,
+    name: env.name,
+    values,
+    _postman_variable_scope: 'environment',
+    _postman_exported_at: new Date().toISOString(),
+    _postman_exported_using: 'PostBoy',
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+// --- Collection export (our format -> v2.1 collection JSON) ---
+
+function requestToPostmanAuth(auth: Request['auth']): PostmanRequest['auth'] | undefined {
+  if (!auth || auth.type === 'inherit' || auth.type === 'none') return undefined;
+  if (auth.type === 'basic') {
+    return { type: 'basic', basic: [{ key: 'username', value: auth.username ?? '' }, { key: 'password', value: auth.password ?? '' }] };
+  }
+  if (auth.type === 'bearer') {
+    return { type: 'bearer', bearer: [{ key: 'token', value: auth.token }] };
+  }
+  if (auth.type === 'oauth2') {
+    return { type: 'oauth2', oauth2: [{ key: 'accessToken', value: auth.oauth2Token }] };
+  }
+  if (auth.type === 'api-key') {
+    return { type: 'apikey', apikey: [{ key: 'key', value: auth.apiKeyKey }, { key: 'value', value: auth.apiKeyValue }, { key: 'in', value: auth.apiKeyAddTo === 'query' ? 'query' : 'header' }] };
+  }
+  return undefined;
+}
+
+function requestToPostmanRequest(req: Request): PostmanRequest {
+  const header: PostmanHeader[] = (req.headers || []).filter((h) => h.enabled).map((h) => ({ key: h.key, value: h.value }));
+  const url: PostmanUrl | string = req.queryParams?.length
+    ? { raw: req.url, query: req.queryParams.filter((q) => q.enabled).map((q) => ({ key: q.key, value: q.value })) }
+    : req.url;
+  let body: PostmanBody | undefined;
+  if (req.body && req.body.mode !== 'none') {
+    if (req.body.mode === 'raw' && req.body.raw != null) {
+      body = { mode: 'raw', raw: req.body.raw };
+    } else if (req.body.mode === 'urlencoded' && req.body.urlencoded?.length) {
+      body = { mode: 'urlencoded', urlencoded: req.body.urlencoded.filter((u) => u.enabled).map((u) => ({ key: u.key, value: u.value })) };
+    } else if (req.body.mode === 'formdata' && req.body.formdata?.length) {
+      body = { mode: 'formdata', formdata: req.body.formdata.filter((f) => f.enabled).map((f) => ({ key: f.key, value: f.value, type: f.type })) };
+    }
+  }
+  const auth = requestToPostmanAuth(req.auth);
+  return { method: req.method, header, url, body, description: req.description, auth };
+}
+
+function requestToPostmanItem(req: Request): PostmanItem {
+  return { name: req.name, description: req.description, request: requestToPostmanRequest(req) };
+}
+
+function folderToPostmanItems(folder: Folder): PostmanItem[] {
+  const items: PostmanItem[] = [];
+  (folder.folders || []).forEach((f) => {
+    items.push({ name: f.name, description: f.description, item: folderToPostmanItems(f) });
+  });
+  (folder.requests || []).forEach((r) => items.push(requestToPostmanItem(r)));
+  return items;
+}
+
+function collectionToPostmanItems(collection: Collection): PostmanItem[] {
+  const items: PostmanItem[] = [];
+  (collection.folders || []).forEach((f) => {
+    items.push({ name: f.name, description: f.description, item: folderToPostmanItems(f) });
+  });
+  (collection.requests || []).forEach((r) => items.push(requestToPostmanItem(r)));
+  return items;
+}
+
+/** Export collection to standard v2.1 collection JSON (importable in common API clients). */
+export function exportCollectionToPostman(collection: Collection): string {
+  const payload: PostmanCollection = {
+    info: {
+      name: collection.name,
+      description: collection.description,
+      schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+    },
+    item: collectionToPostmanItems(collection),
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+/** Export a single folder as a collection (one root folder with same name). */
+export function exportFolderAsCollection(folder: Folder): string {
+  const asCollection: Collection = {
+    name: folder.name,
+    description: folder.description,
+    folders: folder.folders || [],
+    requests: folder.requests || [],
+  };
+  return exportCollectionToPostman(asCollection);
+}
