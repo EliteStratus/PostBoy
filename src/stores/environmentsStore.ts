@@ -14,6 +14,7 @@ interface EnvironmentsState {
   createEnvironment: (name: string) => Promise<void>;
   createEnvironmentWithVariables: (name: string, variables: EnvironmentVariable[]) => Promise<void>;
   updateEnvironment: (name: string, updates: Partial<Environment>) => Promise<void>;
+  renameEnvironment: (oldName: string, newName: string) => Promise<void>;
   deleteEnvironment: (name: string) => Promise<void>;
   setCurrentEnvironment: (name: string | null) => Promise<void>;
   getCurrentEnvironment: () => Environment | null;
@@ -122,6 +123,54 @@ export const useEnvironmentsStore = create<EnvironmentsState>((set, get) => ({
     set(state => ({
       environments: { ...state.environments, [name]: updated },
     }));
+  },
+
+  renameEnvironment: async (oldName: string, newName: string) => {
+    const { environments } = get();
+    const environment = environments[oldName];
+    if (!environment) return;
+
+    const trimmedNew = newName.trim();
+    if (!trimmedNew || trimmedNew === oldName) return;
+    if (environments[trimmedNew]) {
+      set({ error: `An environment named "${trimmedNew}" already exists.` });
+      return;
+    }
+
+    const renamed: Environment = { ...environment, name: trimmedNew };
+    await fileSystemManager.writeFile(
+      getEnvironmentPath(trimmedNew),
+      JSON.stringify(renamed, null, 2)
+    );
+    const deleted = await fileSystemManager.deleteFile(getEnvironmentPath(oldName));
+    if (!deleted) {
+      set({ error: 'Failed to remove old environment file.' });
+      return;
+    }
+
+    const updated = { ...environments };
+    delete updated[oldName];
+    updated[trimmedNew] = renamed;
+    const wasCurrent = get().currentEnvironment === oldName;
+
+    set({
+      environments: updated,
+      ...(wasCurrent ? { currentEnvironment: trimmedNew } : {}),
+      error: null,
+    });
+
+    if (wasCurrent) {
+      try {
+        const { useWorkspaceStore } = await import('./workspaceStore');
+        const workspace = useWorkspaceStore.getState().workspace;
+        if (workspace) {
+          workspace.currentEnvironment = trimmedNew;
+          useWorkspaceStore.getState().saveWorkspace().catch(() => {});
+        }
+      } catch {
+        // Ignore
+      }
+    }
   },
 
   deleteEnvironment: async (name: string) => {

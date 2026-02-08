@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Editor from '@monaco-editor/react';
+import { useThemeStore } from '../stores/themeStore';
 import type { HttpResponse } from '../types';
 
 type ResponseTab = 'body' | 'cookies' | 'headers';
@@ -51,6 +52,8 @@ function getStatusWithText(status: number, statusText: string): string {
 }
 
 export default function ResponseViewer({ response, error }: ResponseViewerProps) {
+  const theme = useThemeStore((s) => s.theme);
+  const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs';
   const [activeTab, setActiveTab] = useState<ResponseTab>('body');
   const [viewMode, setViewMode] = useState<'pretty' | 'raw'>('pretty');
 
@@ -202,6 +205,7 @@ export default function ResponseViewer({ response, error }: ResponseViewerProps)
           <div className="h-full min-h-[240px]">
             <div className="border border-border rounded-lg bg-input-bg overflow-hidden" style={{ height: '100%', minHeight: '240px' }}>
               <Editor
+                theme={monacoTheme}
                 height="100%"
                 language={getLanguage()}
                 value={

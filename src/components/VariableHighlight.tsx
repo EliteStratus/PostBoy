@@ -45,7 +45,7 @@ export function VariableHighlight({ text, context, className = '' }: VariableHig
           return (
             <span
               key={index}
-              className={isResolved ? 'text-blue-600 font-medium' : 'text-red-600 font-medium'}
+              className={isResolved ? 'text-info font-medium' : 'text-error font-medium'}
             >
               {part.text}
             </span>

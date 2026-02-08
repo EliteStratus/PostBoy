@@ -4,6 +4,7 @@ import { useRequestStore } from '../stores/requestStore';
 import { useCollectionsStore } from '../stores/collectionsStore';
 import { useEnvironmentsStore } from '../stores/environmentsStore';
 import { useRequestTabCloseStore } from '../stores/requestTabCloseStore';
+import { useThemeStore } from '../stores/themeStore';
 import { executeRequest } from '../utils/httpExecutor';
 import { getAuthHeaders } from '../utils/requestBuilder';
 import { requestTabId } from '../utils/requestTabId';
@@ -34,7 +35,9 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
   const { getCurrentEnvironment } = useEnvironmentsStore();
   const { setCurrentRequest, setResponse, setExecuting, setError, isExecuting, response, error } = useRequestStore();
   const { setTabState } = useRequestTabCloseStore();
-  
+  const theme = useThemeStore((s) => s.theme);
+  const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs';
+
   const [request, setRequest] = useState<Request | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [showMethodDropdown, setShowMethodDropdown] = useState(false);
@@ -294,7 +297,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         await updateRequest(collection, folder || null, requestName, { method: newMethod });
                       }
                     }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-emerald-50/80 text-method-get font-semibold transition-colors first:pt-2.5"
+                    className="w-full text-left px-4 py-2.5 hover:bg-primary-soft text-method-get font-semibold transition-colors first:pt-2.5"
                   >
                     GET
                   </button>
@@ -310,7 +313,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         await updateRequest(collection, folder || null, requestName, { method: newMethod });
                       }
                     }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-emerald-50/80 text-method-post font-semibold transition-colors"
+                    className="w-full text-left px-4 py-2.5 hover:bg-primary-soft text-method-post font-semibold transition-colors"
                   >
                     POST
                   </button>
@@ -326,7 +329,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         await updateRequest(collection, folder || null, requestName, { method: newMethod });
                       }
                     }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-emerald-50/80 text-method-put font-semibold transition-colors"
+                    className="w-full text-left px-4 py-2.5 hover:bg-primary-soft text-method-put font-semibold transition-colors"
                   >
                     PUT
                   </button>
@@ -342,7 +345,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         await updateRequest(collection, folder || null, requestName, { method: newMethod });
                       }
                     }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-emerald-50/80 text-method-patch font-semibold transition-colors"
+                    className="w-full text-left px-4 py-2.5 hover:bg-primary-soft text-method-patch font-semibold transition-colors"
                   >
                     PATCH
                   </button>
@@ -358,7 +361,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         await updateRequest(collection, folder || null, requestName, { method: newMethod });
                       }
                     }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-emerald-50/80 text-method-delete font-semibold transition-colors last:pb-2.5"
+                    className="w-full text-left px-4 py-2.5 hover:bg-primary-soft text-method-delete font-semibold transition-colors last:pb-2.5"
                   >
                     DELETE
                   </button>
@@ -392,7 +395,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
           <button
             onClick={handleExecute}
             disabled={isExecuting || !request.url?.trim()}
-            className="h-8 bg-primary text-white px-4 rounded hover:bg-primary-hover disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-400 flex items-center"
+            className="h-8 bg-primary text-white px-4 rounded hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-surface-secondary flex items-center"
           >
             {isExecuting ? 'Sending...' : 'Send'}
           </button>
@@ -408,8 +411,8 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Request pane tabs */}
-        <div className="flex border-b border-border bg-surface shrink-0">
+        {/* Request pane tabs — width sized to tab title, no flex-grow */}
+        <div className="flex flex-nowrap border-b border-border bg-surface shrink-0 gap-0 overflow-x-auto min-h-0">
           {[
             { id: 'query-params' as const, label: 'Params' },
             { id: 'authorization' as const, label: 'Authorization' },
@@ -420,7 +423,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
             <button
               key={id}
               onClick={() => setRequestPaneTab(id)}
-              className={`px-3 py-1.5 text-sm border-b-2 transition-colors ${
+              className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-sm border-b-2 transition-colors ${
                 requestPaneTab === id
                   ? 'border-primary text-text-primary font-semibold bg-surface-secondary'
                   : 'border-transparent text-text-secondary font-medium hover:text-text-primary hover:bg-surface-secondary'
@@ -509,7 +512,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         queryParams: request.queryParams.filter((_, i) => i !== index),
                       });
                     }}
-                    className="flex items-center justify-center w-9 h-9 text-red-600 hover:text-red-700 hover:bg-red-50 rounded border border-transparent hover:border-red-200"
+                    className="flex items-center justify-center w-9 h-9 text-error hover:bg-error/10 rounded border border-transparent hover:border-error/30"
                     title="Remove parameter"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -628,7 +631,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         headers: request.headers.filter((_, i) => i !== index),
                       });
                     }}
-                    className="flex items-center justify-center w-9 h-9 text-red-600 hover:text-red-700 hover:bg-red-50 rounded border border-transparent hover:border-red-200"
+                    className="flex items-center justify-center w-9 h-9 text-error hover:bg-error/10 rounded border border-transparent hover:border-error/30"
                     title="Remove header"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -1007,6 +1010,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
               <div ref={bodyEditorContainerRef} className="flex-1 min-h-[200px] w-full min-w-0">
                 <div className="border border-input-border rounded-lg bg-input-bg shadow-sm overflow-hidden w-full h-full">
                   <Editor
+                    theme={monacoTheme}
                     width={bodyEditorWidth || '100%'}
                     height={bodyEditorHeight || 300}
                     language={request.body.rawLanguage || 'json'}
@@ -1080,7 +1084,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         const newItems = request.body!.formdata!.filter((_, i) => i !== index);
                         setRequest({ ...request, body: { ...request.body!, formdata: newItems } });
                       }}
-                      className="flex items-center justify-center text-red-600 hover:text-red-700 p-1"
+                      className="flex items-center justify-center text-error hover:opacity-90 p-1"
                       title="Remove field"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -1159,7 +1163,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         const newItems = request.body!.urlencoded!.filter((_, i) => i !== index);
                         setRequest({ ...request, body: { ...request.body!, urlencoded: newItems } });
                       }}
-                      className="flex items-center justify-center text-red-600 hover:text-red-700 p-1"
+                      className="flex items-center justify-center text-error hover:opacity-90 p-1"
                       title="Remove field"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -1217,6 +1221,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
             {/* Script editor */}
             <div ref={scriptEditorContainerRef} className="flex-1 min-w-0 flex flex-col border border-input-border rounded bg-input-bg overflow-hidden min-h-[200px]">
               <Editor
+                theme={monacoTheme}
                 width={scriptEditorWidth || '100%'}
                 height={scriptEditorHeight || 280}
                 language="javascript"
@@ -1247,7 +1252,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
         role="separator"
         aria-label="Resize request and response panes"
         onMouseDown={handleResizerDown}
-        className="h-1.5 flex-shrink-0 bg-gray-600 hover:bg-gray-500 cursor-ns-resize select-none transition-colors"
+        className="h-1.5 flex-shrink-0 bg-surface-secondary hover:bg-border cursor-ns-resize select-none transition-colors"
       />
 
       {/* Response pane - always visible */}

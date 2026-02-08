@@ -9,6 +9,7 @@ export default function EnvironmentEditor() {
     currentEnvironment,
     loadEnvironments,
     createEnvironment,
+    renameEnvironment,
     deleteEnvironment,
     setCurrentEnvironment,
     addVariable,
@@ -19,6 +20,7 @@ export default function EnvironmentEditor() {
   const [showCreate, setShowCreate] = useState(false);
   const [newEnvName, setNewEnvName] = useState('');
   const [envToDelete, setEnvToDelete] = useState<string | null>(null);
+  const [renamingEnv, setRenamingEnv] = useState<{ current: string; draft: string } | null>(null);
 
   useEffect(() => {
     loadEnvironments();
@@ -36,6 +38,24 @@ export default function EnvironmentEditor() {
   const handleDeleteEnvironment = async (name: string) => {
     setEnvToDelete(null);
     await deleteEnvironment(name);
+  };
+
+  const handleStartRename = (name: string) => {
+    setRenamingEnv({ current: name, draft: name });
+  };
+
+  const handleRenameSubmit = async () => {
+    if (!renamingEnv) return;
+    const { current, draft } = renamingEnv;
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== current) {
+      await renameEnvironment(current, trimmed);
+    }
+    setRenamingEnv(null);
+  };
+
+  const handleRenameCancel = () => {
+    setRenamingEnv(null);
   };
 
   const currentEnv = currentEnvironment ? environments[currentEnvironment] : null;
@@ -137,19 +157,52 @@ export default function EnvironmentEditor() {
       {currentEnv ? (
         <div className="flex-1 overflow-auto">
           <div className="bg-surface rounded-lg shadow border border-border max-w-5xl">
-            <div className="p-4 border-b border-border flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-text-primary">{currentEnv.name}</h3>
-              <button
-                type="button"
-                onClick={() => setEnvToDelete(currentEnv.name)}
-                className="flex items-center justify-center text-text-muted hover:text-error p-2 rounded focus:outline-none focus:ring-2 focus:ring-primary"
-                title="Delete environment"
-                aria-label={`Delete environment ${currentEnv.name}`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                </svg>
-              </button>
+            <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+              {renamingEnv && renamingEnv.current === currentEnv.name ? (
+                <div className="flex-1 flex items-center gap-2 min-w-0">
+                  <input
+                    type="text"
+                    value={renamingEnv.draft}
+                    onChange={(e) => setRenamingEnv((r) => (r ? { ...r, draft: e.target.value } : null))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRenameSubmit();
+                      if (e.key === 'Escape') handleRenameCancel();
+                    }}
+                    onBlur={handleRenameSubmit}
+                    className="flex-1 min-w-0 text-lg font-semibold border border-input-border rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary bg-input-bg text-text-primary"
+                    autoFocus
+                    aria-label="Environment name"
+                  />
+                </div>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold text-text-primary truncate">{currentEnv.name}</h3>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleStartRename(currentEnv.name)}
+                      className="flex items-center justify-center text-text-muted hover:text-primary p-2 rounded focus:outline-none focus:ring-2 focus:ring-primary"
+                      title="Rename environment"
+                      aria-label={`Rename environment ${currentEnv.name}`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEnvToDelete(currentEnv.name)}
+                      className="flex items-center justify-center text-text-muted hover:text-error p-2 rounded focus:outline-none focus:ring-2 focus:ring-primary"
+                      title="Delete environment"
+                      aria-label={`Delete environment ${currentEnv.name}`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                      </svg>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
             <div className="p-4">
               <div className="space-y-0">

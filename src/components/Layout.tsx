@@ -8,6 +8,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore';
 import { useCollectionsStore } from '../stores/collectionsStore';
 import { useEnvironmentsStore } from '../stores/environmentsStore';
 import { useRequestTabCloseStore } from '../stores/requestTabCloseStore';
+import { useThemeStore } from '../stores/themeStore';
 import { requestTabId } from '../utils/requestTabId';
 import type { HttpMethod } from '../types';
 
@@ -79,6 +80,7 @@ export default function Layout() {
   const { getRequest } = useCollectionsStore();
   const { currentEnvironment } = useEnvironmentsStore();
   const getTabState = useRequestTabCloseStore((s) => s.getTabState);
+  const { theme, toggleTheme } = useThemeStore();
   const [view, setView] = useState<View>('request');
   const [tabs, setTabs] = useState<RequestTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -168,14 +170,14 @@ export default function Layout() {
           <h1 className="text-xl font-bold text-text-primary">PostBoy</h1>
           {workspace && (
             <span className="text-sm text-text-secondary">
-              Workspace: <span className="font-semibold text-emerald-600">{workspace.name}</span>
+              Workspace: <span className="font-semibold text-primary">{workspace.name}</span>
             </span>
           )}
           {currentEnvironment && (
             <>
               <span className="text-sm text-text-muted">•</span>
               <span className="text-sm text-text-secondary">
-                Environment: <span className="font-semibold text-emerald-600">{currentEnvironment}</span>
+                Environment: <span className="font-semibold text-primary">{currentEnvironment}</span>
               </span>
             </>
           )}
@@ -221,7 +223,24 @@ export default function Layout() {
           >
             Import
           </button>
-          <div className="ml-4 pl-4 border-l border-border">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
+            className="p-1.5 rounded text-text-secondary hover:text-text-primary hover:bg-surface-secondary focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label={theme === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
+          >
+            {theme === 'dark' ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+          </button>
+          <div className="ml-2 pl-4 border-l border-border">
             <button
               onClick={closeWorkspace}
               className="px-3 py-1 rounded text-sm bg-surface border border-border text-text-primary hover:bg-surface-secondary"
@@ -239,7 +258,7 @@ export default function Layout() {
           {view === 'request' && (
             <>
               {tabs.length > 0 && (
-                <div className="flex items-center gap-0.5 border-b border-border bg-surface-secondary overflow-x-auto shrink-0">
+                <div className="flex flex-nowrap items-center gap-0.5 border-b border-border bg-surface-secondary overflow-x-auto shrink-0 min-h-0">
                   {tabs.map((tab) => {
                     const request = getRequest(tab.collection, tab.folder, tab.request);
                     const method = request?.method || 'GET';
@@ -257,7 +276,7 @@ export default function Layout() {
                             handleTabClick(tab.id);
                           }
                         }}
-                        className={`flex items-center gap-2 pl-3 pr-1 py-2 min-w-[120px] flex-1 max-w-none border-b-2 cursor-pointer transition-colors ${
+                        className={`flex items-center gap-2 pl-3 pr-1 py-2 shrink-0 border-b-2 cursor-pointer transition-colors ${
                           isActive
                             ? 'border-primary bg-surface text-text-primary'
                             : 'border-transparent bg-surface-secondary text-text-secondary hover:bg-surface hover:text-text-primary'
@@ -269,7 +288,7 @@ export default function Layout() {
                         <span className={`font-semibold text-xs ${getMethodColor(method)} shrink-0`}>
                           {method}
                         </span>
-                        <span className="text-sm font-medium flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" title={tab.request}>
+                        <span className="text-sm font-medium whitespace-nowrap shrink-0" title={tab.request}>
                           {tab.request}
                         </span>
                         <button

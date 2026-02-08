@@ -676,7 +676,7 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
                     setShowCreateCollection(false);
                     setNewCollectionName('');
                   }}
-                  className="flex-1 bg-gray-200 text-gray-700 text-xs py-1 px-2 rounded hover:bg-gray-300"
+                  className="flex-1 bg-surface-secondary text-text-primary text-xs py-1 px-2 rounded hover:bg-border border border-border"
                 >
                   Cancel
                 </button>
@@ -732,7 +732,7 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
                     />
                   ) : (
                     <>
-                      <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[16px] text-emerald-600" title={name}>{collection.name}</span>
+                      <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[16px] text-primary" title={name}>{collection.name}</span>
                       <button
                         className="opacity-0 group-hover:opacity-100 text-text-secondary hover:text-text-primary px-1 shrink-0"
                         onClick={(e) => {
@@ -829,7 +829,7 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
             );
           })}
           {Object.keys(collections).length === 0 && (
-            <div className="p-4 text-sm text-gray-500 text-center">
+            <div className="p-4 text-sm text-text-secondary text-center">
               No collections. Create one to get started.
             </div>
           )}

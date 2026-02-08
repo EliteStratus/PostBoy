@@ -48,6 +48,46 @@
   --color-status-5xx: #EF4444;
 }
 
+/* Dark theme — token overrides only */
+[data-theme="dark"] {
+  --color-primary: #22C55E;
+  --color-primary-hover: #4ADE80;
+  --color-primary-active: #16A34A;
+  --color-primary-soft: #14532D;
+
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-error: #F87171;
+  --color-info: #38BDF8;
+
+  --color-bg-app: #0F172A;
+  --color-surface: #1E293B;
+  --color-sidebar: #1E293B;
+  --color-surface-secondary: #334155;
+  --color-border: #334155;
+
+  --color-text-primary: #F1F5F9;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted: #64748B;
+  --color-text-disabled: #475569;
+
+  --color-input-bg: #1E293B;
+  --color-input-border: #475569;
+  --color-input-focus: #22C55E;
+  --color-input-placeholder: #64748B;
+
+  --color-method-get: #38BDF8;
+  --color-method-post: #22C55E;
+  --color-method-put: #F59E0B;
+  --color-method-patch: #A78BFA;
+  --color-method-delete: #F87171;
+
+  --color-status-2xx: #22C55E;
+  --color-status-3xx: #38BDF8;
+  --color-status-4xx: #F59E0B;
+  --color-status-5xx: #F87171;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
