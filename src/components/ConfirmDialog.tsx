@@ -85,13 +85,11 @@ export default function ConfirmDialog({
           <button
             onClick={onConfirm}
             disabled={confirmDisabled}
-            className={`px-4 py-2 text-sm font-medium text-white rounded transition-colors ${
-              confirmDisabled
-                ? 'opacity-50 cursor-not-allowed'
-                : danger
-                  ? 'bg-error hover:bg-error/90'
-                  : 'bg-primary hover:bg-primary-hover'
-            }`}
+            className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
+              danger
+                ? 'bg-error text-white hover:bg-error/90'
+                : 'bg-primary text-on-primary hover:bg-primary-hover'
+            } ${confirmDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {confirmText}
           </button>

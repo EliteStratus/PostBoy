@@ -167,7 +167,10 @@ export default function Layout() {
       {/* Header */}
       <header className="bg-surface border-b border-border px-4 py-1 flex items-center justify-between min-h-0">
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-text-primary">PostBoy</h1>
+          <div className="flex items-center gap-2">
+            <img src="/postboy-logo.png" alt="" className={`h-14 w-auto max-w-[180px] shrink-0 object-contain object-left ${theme === 'dark' ? '[mix-blend-mode:screen]' : ''}`} aria-hidden />
+            <span className="text-xl font-bold text-text-primary">PostBoy</span>
+          </div>
           {workspace && (
             <span className="text-sm text-text-secondary">
               Workspace: <span className="font-semibold text-primary">{workspace.name}</span>
@@ -187,7 +190,7 @@ export default function Layout() {
             onClick={() => setView('request')}
             className={`px-3 py-1 rounded text-sm ${
               view === 'request'
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-on-primary'
                 : 'bg-surface border border-border text-text-primary hover:bg-surface-secondary'
             }`}
           >
@@ -197,7 +200,7 @@ export default function Layout() {
             onClick={() => setView('environment')}
             className={`px-3 py-1 rounded text-sm ${
               view === 'environment'
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-on-primary'
                 : 'bg-surface border border-border text-text-primary hover:bg-surface-secondary'
             }`}
           >
@@ -207,7 +210,7 @@ export default function Layout() {
             onClick={() => setView('runner')}
             className={`px-3 py-1 rounded text-sm ${
               view === 'runner'
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-on-primary'
                 : 'bg-surface border border-border text-text-primary hover:bg-surface-secondary'
             }`}
           >
@@ -217,7 +220,7 @@ export default function Layout() {
             onClick={() => setView('import')}
             className={`px-3 py-1 rounded text-sm ${
               view === 'import'
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-on-primary'
                 : 'bg-surface border border-border text-text-primary hover:bg-surface-secondary'
             }`}
           >
@@ -363,7 +366,7 @@ export default function Layout() {
               </button>
               <button
                 onClick={handleCloseConfirmSave}
-                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary-hover rounded"
+                className="px-4 py-2 text-sm font-medium text-on-primary bg-primary hover:bg-primary-hover rounded"
               >
                 Save
               </button>

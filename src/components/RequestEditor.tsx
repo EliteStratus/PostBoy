@@ -395,7 +395,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
           <button
             onClick={handleExecute}
             disabled={isExecuting || !request.url?.trim()}
-            className="h-8 bg-primary text-white px-4 rounded hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-surface-secondary flex items-center"
+            className="h-8 bg-primary text-on-primary px-4 rounded hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-surface-secondary flex items-center"
           >
             {isExecuting ? 'Sending...' : 'Send'}
           </button>

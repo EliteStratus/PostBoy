@@ -67,7 +67,7 @@ export default function EnvironmentEditor() {
           <h2 className="text-2xl font-bold text-text-primary">Environments</h2>
           <button
             onClick={() => setShowCreate(true)}
-            className="bg-primary text-white w-9 h-9 flex items-center justify-center rounded hover:bg-primary-hover font-medium text-lg"
+            className="bg-primary text-on-primary w-9 h-9 flex items-center justify-center rounded hover:bg-primary-hover font-medium text-lg"
             title="New environment"
           >
             +
@@ -91,7 +91,7 @@ export default function EnvironmentEditor() {
             <div className="flex gap-2">
               <button
                 onClick={handleCreateEnvironment}
-                className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-hover"
+                className="bg-primary text-on-primary px-4 py-2 rounded hover:bg-primary-hover"
               >
                 Create
               </button>
@@ -116,7 +116,7 @@ export default function EnvironmentEditor() {
               onClick={() => setCurrentEnvironment(name)}
               className={`px-4 py-2 rounded ${
                 currentEnvironment === name
-                  ? 'bg-primary text-white'
+                  ? 'bg-primary text-on-primary'
                   : 'bg-surface border border-border text-text-primary hover:bg-surface-secondary'
               }`}
             >
@@ -237,7 +237,7 @@ export default function EnvironmentEditor() {
                       enabled: true,
                     });
                   }}
-                  className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-hover"
+                  className="bg-primary text-on-primary px-4 py-2 rounded hover:bg-primary-hover"
                 >
                   + Add Variable
                 </button>

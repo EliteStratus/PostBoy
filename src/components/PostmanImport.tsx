@@ -148,7 +148,7 @@ export default function PostmanImport() {
         </div>
       )}
 
-      <div className="space-y-4 max-w-md w-full">
+      <div className="space-y-12 max-w-md w-full">
         <div className="bg-surface rounded-lg shadow border border-border p-4">
           <label className="block text-sm font-bold text-text-primary mb-2">
             Import Collection (Postman v2.1)

@@ -14,6 +14,7 @@ export default {
           active: 'var(--color-primary-active)',
           soft: 'var(--color-primary-soft)',
         },
+        'on-primary': 'var(--color-on-primary)',
         // Semantic Colors
         success: 'var(--color-success)',
         warning: 'var(--color-warning)',

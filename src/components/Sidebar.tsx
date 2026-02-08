@@ -667,7 +667,7 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
               <div className="flex gap-2 mt-2">
                 <button
                   onClick={handleCreateCollection}
-                  className="flex-1 bg-primary text-white text-xs py-1 px-2 rounded hover:bg-primary-hover"
+                  className="flex-1 bg-primary text-on-primary text-xs py-1 px-2 rounded hover:bg-primary-hover"
                 >
                   Create
                 </button>

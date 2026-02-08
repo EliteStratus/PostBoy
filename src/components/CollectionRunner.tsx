@@ -443,7 +443,7 @@ export default function CollectionRunner({
                 className={`px-6 py-2 rounded text-sm font-medium ${
                   isRunning || !selectedCollection || requestsToRun.length === 0
                     ? 'bg-surface border border-border text-text-muted cursor-not-allowed'
-                    : 'bg-primary text-white hover:bg-primary-hover'
+                    : 'bg-primary text-on-primary hover:bg-primary-hover'
                 }`}
               >
                 {isRunning ? 'Running...' : 'Run'}
