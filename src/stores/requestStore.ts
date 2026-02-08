@@ -1,12 +1,18 @@
 import { create } from 'zustand';
 import type { Request, HttpResponse } from '../types';
 
+export type TabResponse = { response: HttpResponse | null; error: string | null };
+
 interface RequestState {
   currentRequest: Request | null;
+  /** @deprecated use getResponseForTab / setResponseForTab; kept for selectors that expect a single response */
   response: HttpResponse | null;
   isExecuting: boolean;
+  /** @deprecated use getResponseForTab / setResponseForTab */
   error: string | null;
   executionTime: number | null;
+  /** Response and error per tab id so switching tabs does not clear the previous tab's response */
+  responsesByTab: Record<string, TabResponse>;
 
   setCurrentRequest: (request: Request | null) => void;
   setResponse: (response: HttpResponse | null) => void;
@@ -14,17 +20,20 @@ interface RequestState {
   setError: (error: string | null) => void;
   setExecutionTime: (time: number | null) => void;
   clearResponse: () => void;
+  getResponseForTab: (tabId: string) => TabResponse;
+  setResponseForTab: (tabId: string, response: HttpResponse | null, error: string | null) => void;
 }
 
-export const useRequestStore = create<RequestState>((set) => ({
+export const useRequestStore = create<RequestState>((set, get) => ({
   currentRequest: null,
   response: null,
   isExecuting: false,
   error: null,
   executionTime: null,
+  responsesByTab: {},
 
   setCurrentRequest: (request) => {
-    set({ currentRequest: request, response: null, error: null });
+    set({ currentRequest: request });
   },
 
   setResponse: (response) => {
@@ -45,5 +54,20 @@ export const useRequestStore = create<RequestState>((set) => ({
 
   clearResponse: () => {
     set({ response: null, error: null, executionTime: null });
+  },
+
+  getResponseForTab: (tabId) => {
+    return get().responsesByTab[tabId] ?? { response: null, error: null };
+  },
+
+  setResponseForTab: (tabId, response, error) => {
+    set((state) => ({
+      responsesByTab: {
+        ...state.responsesByTab,
+        [tabId]: { response, error },
+      },
+      response,
+      error,
+    }));
   },
 }));

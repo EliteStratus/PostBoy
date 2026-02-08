@@ -47,6 +47,11 @@ export async function onRequest(context: { request: Request }): Promise<Response
         // If parsing fails, use empty headers
       }
     }
+    // Forward cookie header so session from auth API is sent to target
+    const cookie = request.headers.get('Cookie');
+    if (cookie) {
+      headers = { ...headers, Cookie: cookie };
+    }
     
     // Get body from query parameter for POST/PUT/PATCH
     let body: string | FormData | null = null;
@@ -82,21 +87,27 @@ export async function onRequest(context: { request: Request }): Promise<Response
     // Get response body
     const responseBody = await proxyResponse.text();
     
-    // Get all response headers
-    const responseHeaders: HeadersInit = {
+    // Build response headers (use Headers for multiple Set-Cookie)
+    const responseHeaders = new Headers({
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Companycode, accept',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Companycode, accept, Cookie',
       'Access-Control-Expose-Headers': '*',
-    };
-    
-    // Copy content-type from original response
+    });
     const contentType = proxyResponse.headers.get('Content-Type');
     if (contentType) {
-      responseHeaders['Content-Type'] = contentType;
+      responseHeaders.set('Content-Type', contentType);
+    }
+    // Forward Set-Cookie so browser stores session (e.g. from auth API) for subsequent requests
+    const setCookies = proxyResponse.headers.getSetCookie?.();
+    if (setCookies?.length) {
+      for (const value of setCookies) {
+        responseHeaders.append('Set-Cookie', value);
+      }
+      // Expose cookie(s) to client JS (browser forbids reading Set-Cookie); show in Response Headers tab
+      responseHeaders.set('X-Response-Set-Cookie', setCookies.join('\n'));
     }
     
-    // Create response with CORS headers
     return new Response(responseBody, {
       status: proxyResponse.status,
       statusText: proxyResponse.statusText,

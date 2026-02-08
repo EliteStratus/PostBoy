@@ -147,7 +147,12 @@ export default function ResponseViewer({ response, error }: ResponseViewerProps)
   const setCookieHeaders = Object.entries(response.headers).filter(
     ([k]) => k.toLowerCase() === 'set-cookie'
   );
-  const cookies = setCookieHeaders.flatMap(([, v]) => v.split(/,\s*(?=\w+=)/).map((s) => s.trim()));
+  // Support multiple Set-Cookie: newline-separated (from executor) or comma-separated
+  const cookies = setCookieHeaders.flatMap(([, v]) =>
+    typeof v === 'string'
+      ? v.split(/\n/).flatMap((line) => line.split(/,\s*(?=\w+=)/).map((s) => s.trim())).filter(Boolean)
+      : []
+  );
 
   const statusColorClass = getStatusColorClass(response.status);
 
@@ -169,6 +174,9 @@ export default function ResponseViewer({ response, error }: ResponseViewerProps)
               {tab}
               {tab === 'headers' && Object.keys(response.headers).length > 0 && (
                 <span className="ml-1.5 text-xs opacity-80">({Object.keys(response.headers).length})</span>
+              )}
+              {tab === 'cookies' && cookies.length > 0 && (
+                <span className="ml-1.5 text-xs opacity-80">({cookies.length})</span>
               )}
             </button>
           ))}
@@ -234,15 +242,22 @@ export default function ResponseViewer({ response, error }: ResponseViewerProps)
                 <table className="w-full text-sm">
                   <thead className="bg-surface-secondary">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-text-primary">Cookie</th>
+                      <th className="w-[30%] min-w-[120px] px-3 py-2 text-left font-semibold text-text-primary">Name</th>
+                      <th className="px-3 py-2 text-left font-semibold text-text-primary">Value</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {cookies.map((cookie, i) => (
-                      <tr key={i} className="border-t border-border">
-                        <td className="px-3 py-2 font-mono text-text-primary break-all">{cookie}</td>
-                      </tr>
-                    ))}
+                    {cookies.map((cookie, i) => {
+                      const eq = cookie.indexOf('=');
+                      const name = eq >= 0 ? cookie.slice(0, eq).trim() : cookie;
+                      const value = eq >= 0 ? cookie.slice(eq + 1).trim() : '—';
+                      return (
+                        <tr key={i} className="border-t border-border">
+                          <td className="w-[30%] min-w-[120px] px-3 py-2 font-mono font-semibold text-text-primary align-top">{name}</td>
+                          <td className="px-3 py-2 font-mono text-text-secondary break-all">{value}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

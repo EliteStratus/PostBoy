@@ -63,6 +63,7 @@ export async function executeRequest(
         method: builtRequest.method,
         headers: builtRequest.headers,
         signal: controller.signal,
+        credentials: 'include', // Send and receive cookies (e.g. session from auth API)
       };
 
       if (builtRequest.body) {
@@ -112,8 +113,31 @@ export async function executeRequest(
       const responseText = await response.text();
       const responseHeaders: Record<string, string> = {};
       response.headers.forEach((value, key) => {
-        responseHeaders[key] = value;
+        const lower = key.toLowerCase();
+        if (lower === 'x-response-set-cookie') {
+          // Proxy sends Set-Cookie here (browser forbids JS from reading Set-Cookie). Show as Set-Cookie in Headers tab.
+          responseHeaders['Set-Cookie'] = value;
+          return;
+        }
+        if (lower !== 'set-cookie') {
+          responseHeaders[key] = value;
+        }
       });
+      // Copy proxy's cookie exposure into Set-Cookie for display (if not already set)
+      const exposed = response.headers.get('x-response-set-cookie');
+      if (exposed != null && responseHeaders['Set-Cookie'] == null) {
+        responseHeaders['Set-Cookie'] = exposed;
+      }
+      // Server-side getSetCookie() is not available in browser; use x-response-set-cookie from proxy when present
+      if (responseHeaders['Set-Cookie'] == null) {
+        const setCookies = response.headers.getSetCookie?.();
+        if (setCookies?.length) {
+          responseHeaders['Set-Cookie'] = setCookies.join('\n');
+        } else {
+          const single = response.headers.get('set-cookie');
+          if (single != null) responseHeaders['Set-Cookie'] = single;
+        }
+      }
 
       const httpResponse: HttpResponse = {
         status: response.status,

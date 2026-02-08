@@ -31,9 +31,12 @@ interface RequestEditorProps {
 }
 
 export default function RequestEditor({ collection, folder, requestName }: RequestEditorProps) {
+  const tabId = requestTabId(collection ?? '', folder ?? null, requestName ?? '');
   const { getRequest, createRequest, updateRequest } = useCollectionsStore();
   const { getCurrentEnvironment } = useEnvironmentsStore();
-  const { setCurrentRequest, setResponse, setExecuting, setError, isExecuting, response, error } = useRequestStore();
+  const { setCurrentRequest, setResponseForTab, setExecuting, isExecuting } = useRequestStore();
+  const response = useRequestStore((s) => s.responsesByTab[tabId]?.response ?? null);
+  const error = useRequestStore((s) => s.responsesByTab[tabId]?.error ?? null);
   const { setTabState } = useRequestTabCloseStore();
   const theme = useThemeStore((s) => s.theme);
   const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs';
@@ -212,8 +215,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
     if (!request) return;
 
     setExecuting(true);
-    setError(null);
-    setResponse(null);
+    setResponseForTab(tabId, null, null);
 
     try {
       const environment = getCurrentEnvironment();
@@ -229,17 +231,17 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
         });
         
         if (unresolved.length > 0) {
-          setError(`Unresolved variables in URL: ${unresolved.join(', ')}. Please set these in your environment.`);
+          setResponseForTab(tabId, null, `Unresolved variables in URL: ${unresolved.join(', ')}. Please set these in your environment.`);
           setExecuting(false);
           return;
         }
       }
       
       const httpResponse = await executeRequest(request, { environment: environment || undefined });
-      setResponse(httpResponse);
+      setResponseForTab(tabId, httpResponse, null);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Request failed';
-      setError(errorMessage);
+      setResponseForTab(tabId, null, errorMessage);
       console.error('Request execution error:', err);
     } finally {
       setExecuting(false);
@@ -566,6 +568,31 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                   <div className="w-9 h-9" aria-hidden="true" />
                 </div>
               ))}
+              {/* Cookie header (always sent by browser with credentials: include) - read-only. HttpOnly cookies (e.g. SESSION) are not visible in document.cookie. */}
+              <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
+                <div className="w-9 h-9 flex items-center justify-center">
+                  <input type="checkbox" checked readOnly disabled className="w-5 h-5 rounded border-input-border opacity-70" title="Sent by browser (read-only)" />
+                </div>
+                <input
+                  type="text"
+                  readOnly
+                  value="Cookie"
+                  className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
+                />
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <input
+                    type="text"
+                    readOnly
+                    value={typeof document !== 'undefined' && document.cookie ? document.cookie : '(sent by browser—may include HttpOnly cookies e.g. SESSION)'}
+                    className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default font-mono text-xs break-all"
+                    title="HttpOnly cookies (e.g. from auth) are sent by the browser but not visible here"
+                  />
+                  {typeof document !== 'undefined' && !document.cookie && (
+                    <span className="text-xs text-text-muted px-0.5">Included with request; value hidden for HttpOnly cookies.</span>
+                  )}
+                </div>
+                <div className="w-9 h-9" aria-hidden="true" />
+              </div>
               {request.headers.map((header, index) => (
                 <div key={index} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
                   <label className="flex items-center justify-center w-9 h-9 cursor-pointer">
