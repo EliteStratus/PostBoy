@@ -498,11 +498,13 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
           }}
           onContextMenu={(e) => showContextMenu(e, 'folder', collectionName, [...folderPath, folder.name])}
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-            <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" fill="#374151" />
-            <path d="M3 7l2-2h6l2 2H3z" fill="#0369A1" />
-          </svg>
-          <span className="text-text-secondary text-xs">{isExpanded ? '▼' : '▶'}</span>
+          <span className="text-text-primary shrink-0 flex items-center gap-0.5">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+              <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" fill="currentColor" />
+              <path d="M3 7l2-2h6l2 2H3z" fill="var(--color-primary)" />
+            </svg>
+            <span className="text-xs">{isExpanded ? '▼' : '▶'}</span>
+          </span>
           {isRenaming ? (
             <input
               key={`folder-rename-${collectionName}-${currentFolderPath.join('/')}`}
@@ -685,7 +687,9 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
           )}
         </div>
         <div className="flex-1 overflow-y-auto">
-          {Object.entries(collections).map(([name, collection]) => {
+          {Object.entries(collections)
+            .sort(([, a], [, b]) => (a.name || '').localeCompare((b.name || ''), undefined, { sensitivity: 'base' }))
+            .map(([name, collection]) => {
             const isRenaming = renamingItem?.type === 'collection' && renamingItem.collection === name;
 
             const isDropTargetRoot = draggedItem?.type === 'folder' && dragOverItem?.type === 'folder' && dragOverItem?.collection === name && dragOverItem?.folder === null && dragOverItem?.index === -1;
@@ -714,7 +718,7 @@ export default function Sidebar({ onSelectRequest, onNavigateToRunner }: Sidebar
                   }}
                   onContextMenu={(e) => showContextMenu(e, 'collection', name)}
                 >
-                  <span className="text-text-secondary">
+                  <span className="text-text-primary">
                     {expandedCollections.has(name) ? '▼' : '▶'}
                   </span>
                   {isRenaming ? (
