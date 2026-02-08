@@ -14,81 +14,145 @@ export default function PostmanImport() {
   const collectionInputRef = useRef<HTMLInputElement>(null);
   const environmentInputRef = useRef<HTMLInputElement>(null);
 
-  const processCollectionFile = async (file: File) => {
+  const importOneCollection = async (file: File): Promise<{ name: string; requests: number }> => {
+    const collection = await importPostmanCollection(file);
+    await createCollection(collection.name, collection.description);
+
+    const importFolders = async (folders: typeof collection.folders, folderPath: string[] = []) => {
+      for (const folder of folders) {
+        await createFolder(collection.name, folderPath, folder.name);
+        for (const request of folder.requests) {
+          await createRequest(collection.name, [...folderPath, folder.name], request);
+        }
+        if (folder.folders.length > 0) {
+          await importFolders(folder.folders, [...folderPath, folder.name]);
+        }
+      }
+    };
+
+    for (const request of collection.requests) {
+      await createRequest(collection.name, null, request);
+    }
+    if (collection.folders.length > 0) {
+      await importFolders(collection.folders);
+    }
+
+    const requestCount =
+      collection.requests.length +
+      collection.folders.reduce((sum, f) => sum + f.requests.length, 0);
+    return { name: collection.name, requests: requestCount };
+  };
+
+  const processCollectionFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files).filter(
+      (f) => f.type === 'application/json' || f.name.endsWith('.json')
+    );
+    if (fileArray.length === 0) {
+      setError('No JSON files selected');
+      return;
+    }
     setImporting(true);
     setError(null);
     setSuccess(null);
+    const succeeded: { name: string; requests: number }[] = [];
+    const failed: { file: string; message: string }[] = [];
 
     try {
-      const collection = await importPostmanCollection(file);
-      await createCollection(collection.name, collection.description);
-      
-      // Import folders recursively
-      const importFolders = async (folders: typeof collection.folders, folderPath: string[] = []) => {
-        for (const folder of folders) {
-          await createFolder(collection.name, folderPath, folder.name);
-          
-          // Import requests in this folder
-          for (const request of folder.requests) {
-            await createRequest(collection.name, [...folderPath, folder.name], request);
-          }
-          
-          // Recursively import nested folders
-          if (folder.folders.length > 0) {
-            await importFolders(folder.folders, [...folderPath, folder.name]);
-          }
+      for (const file of fileArray) {
+        try {
+          const result = await importOneCollection(file);
+          succeeded.push(result);
+        } catch (err) {
+          failed.push({
+            file: file.name,
+            message: err instanceof Error ? err.message : 'Failed to import',
+          });
         }
-      };
-      
-      // Import top-level requests
-      for (const request of collection.requests) {
-        await createRequest(collection.name, null, request);
       }
-      
-      // Import folders and their requests
-      if (collection.folders.length > 0) {
-        await importFolders(collection.folders);
-      }
-      
       await loadCollections();
-      
-      const requestCount = collection.requests.length + 
-        collection.folders.reduce((sum, f) => sum + f.requests.length, 0);
-      setSuccess(`Collection "${collection.name}" imported successfully! (${requestCount} request${requestCount !== 1 ? 's' : ''})`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import collection');
+      if (succeeded.length > 0) {
+        const msg =
+          succeeded.length === 1
+            ? `Collection "${succeeded[0].name}" imported (${succeeded[0].requests} request${succeeded[0].requests !== 1 ? 's' : ''}).`
+            : `${succeeded.length} collections imported: ${succeeded.map((s) => s.name).join(', ')}.`;
+        setSuccess(
+          failed.length > 0
+            ? `${msg} Failed: ${failed.map((f) => `${f.file} (${f.message})`).join('; ')}`
+            : msg
+        );
+      }
+      if (failed.length > 0 && succeeded.length === 0) {
+        setError(failed.map((f) => `${f.file}: ${f.message}`).join('; '));
+      }
     } finally {
       setImporting(false);
     }
   };
 
-  const processEnvironmentFile = async (file: File) => {
+  const importOneEnvironment = async (file: File): Promise<string> => {
+    const environment = await importPostmanEnvironment(file);
+    await createEnvironmentWithVariables(environment.name, environment.variables);
+    return environment.name;
+  };
+
+  const processEnvironmentFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files).filter(
+      (f) => f.type === 'application/json' || f.name.endsWith('.json')
+    );
+    if (fileArray.length === 0) {
+      setError('No JSON files selected');
+      return;
+    }
     setImporting(true);
     setError(null);
     setSuccess(null);
+    const succeeded: string[] = [];
+    const failed: { file: string; message: string }[] = [];
 
     try {
-      const environment = await importPostmanEnvironment(file);
-      await createEnvironmentWithVariables(environment.name, environment.variables);
+      for (const file of fileArray) {
+        try {
+          const name = await importOneEnvironment(file);
+          succeeded.push(name);
+        } catch (err) {
+          failed.push({
+            file: file.name,
+            message: err instanceof Error ? err.message : 'Failed to import',
+          });
+        }
+      }
       await loadEnvironments();
-      setSuccess(`Environment "${environment.name}" imported successfully!`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import environment');
+      if (succeeded.length > 0) {
+        const msg =
+          succeeded.length === 1
+            ? `Environment "${succeeded[0]}" imported.`
+            : `${succeeded.length} environments imported: ${succeeded.join(', ')}.`;
+        setSuccess(
+          failed.length > 0
+            ? `${msg} Failed: ${failed.map((f) => `${f.file} (${f.message})`).join('; ')}`
+            : msg
+        );
+      }
+      if (failed.length > 0 && succeeded.length === 0) {
+        setError(failed.map((f) => `${f.file}: ${f.message}`).join('; '));
+      }
     } finally {
       setImporting(false);
     }
   };
 
   const handleCollectionImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await processCollectionFile(file);
+    const files = event.target.files;
+    if (!files?.length) return;
+    await processCollectionFiles(files);
+    event.target.value = '';
   };
 
   const handleEnvironmentImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await processEnvironmentFile(file);
+    const files = event.target.files;
+    if (!files?.length) return;
+    await processEnvironmentFiles(files);
+    event.target.value = '';
   };
 
   const handleDrag = useCallback((e: React.DragEvent, type: 'collection' | 'environment') => {
@@ -103,27 +167,31 @@ export default function PostmanImport() {
     }
   }, []);
 
-  const handleDrop = useCallback(async (e: React.DragEvent, type: 'collection' | 'environment') => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    setDragType(null);
+  const handleDrop = useCallback(
+    async (e: React.DragEvent, type: 'collection' | 'environment') => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragActive(false);
+      setDragType(null);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      
-      // Check file type
-      if (file.type === 'application/json' || file.name.endsWith('.json')) {
-        if (type === 'collection') {
-          await processCollectionFile(file);
-        } else {
-          await processEnvironmentFile(file);
-        }
-      } else {
-        setError('Please drop a JSON file');
+      const files = e.dataTransfer.files;
+      if (!files?.length) return;
+
+      const jsonFiles = Array.from(files).filter(
+        (f) => f.type === 'application/json' || f.name.endsWith('.json')
+      );
+      if (jsonFiles.length === 0) {
+        setError('Please drop JSON file(s)');
+        return;
       }
-    }
-  }, []);
+      if (type === 'collection') {
+        await processCollectionFiles(jsonFiles);
+      } else {
+        await processEnvironmentFiles(jsonFiles);
+      }
+    },
+    []
+  );
 
   const dropBoxClass = `
     bg-surface rounded-lg shadow border border-border
@@ -165,6 +233,7 @@ export default function PostmanImport() {
               ref={collectionInputRef}
               type="file"
               accept=".json,application/json"
+              multiple
               onChange={handleCollectionImport}
               disabled={importing}
               className="hidden"
@@ -187,7 +256,7 @@ export default function PostmanImport() {
               <div className="text-sm text-text-secondary">
                 <span className="font-medium text-primary hover:text-primary-hover">Click to upload</span> or drag and drop
               </div>
-              <p className="text-xs text-text-muted">JSON file (v2.1 collection)</p>
+              <p className="text-xs text-text-muted">JSON file(s) (v2.1 collection)</p>
             </div>
           </div>
         </div>
@@ -208,6 +277,7 @@ export default function PostmanImport() {
               ref={environmentInputRef}
               type="file"
               accept=".json,application/json"
+              multiple
               onChange={handleEnvironmentImport}
               disabled={importing}
               className="hidden"
@@ -230,7 +300,7 @@ export default function PostmanImport() {
               <div className="text-sm text-text-secondary">
                 <span className="font-medium text-primary hover:text-primary-hover">Click to upload</span> or drag and drop
               </div>
-              <p className="text-xs text-text-muted">JSON file (environment)</p>
+              <p className="text-xs text-text-muted">JSON file(s) (environment)</p>
             </div>
           </div>
         </div>

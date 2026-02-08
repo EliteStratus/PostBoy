@@ -405,7 +405,7 @@ PostBoy is a Postman-like API client that runs entirely in the browser with no b
 
 - v2.1 collection import: parse JSON, convert to PostBoy format (collections, folders, requests, auth, body, scripts), save to workspace
 - v2.1 environment import: variables with type (string/secret), enabled
-- Import UI: **Import** view with two tiles (collection, environment); file picker or drag-and-drop; JSON validation
+- Import UI: **Import** view with two tiles (collection, environment); file picker (multi-select) or drag-and-drop; supports multiple files per import; JSON validation
 
 ### 4.2 Export Functionality
 **Status**: Implemented

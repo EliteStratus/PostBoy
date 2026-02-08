@@ -12,7 +12,7 @@ A UI-based API client that runs entirely in the browser with no backend or datab
 - **Request editor**: Method, URL, headers, auth (None, Basic, Bearer, OAuth2, API Key), body; save-before-close prompt when closing a dirty tab; response and cookies preserved per tab
 - **Cookies & session**: Requests sent with `credentials: 'include'`; cookies from auth responses (e.g. Set-Cookie) shown in Response Headers/Cookies; proxy forwards Cookie/Set-Cookie for cross-origin APIs
 - **Pre/Post scripts**: JavaScript with pm-lite API in a Web Worker
-- **Import**: v2.1 collection and environment JSON (file picker or drag-and-drop)
+- **Import**: v2.1 collection and environment JSON; supports multiple files via file picker (multi-select) or drag-and-drop
 - **Export**: Export current or all environments (v2.1 JSON); export collection or folder from sidebar context menu (v2.1 collection JSON)
 - **Monaco Editor**: JSON, XML, JavaScript editing with syntax highlighting
 - **Response viewer**: Body, Headers, Cookies tabs; pretty-print, timing, size
@@ -63,7 +63,7 @@ Builds the app and deploys to Cloudflare Pages. For a local build only (e.g. for
 2. **Collections & folders**: Create collections and nested folders; add requests with method, URL, headers, auth, body
 3. **Environments**: Add environments and variables; use See/Hide for secrets; only enabled variables are substituted in requests
 4. **Run requests**: Run a single request from the editor, or open **Runner**, pick a collection (or run from a folder in the sidebar), select requests, then Run; view Success / Failed / Attention counts and clear results as needed
-5. **Import**: Use **Import** (top nav) to add v2.1 collections and environments from JSON. **Export**: From **Environments**, use Export / Export all; from the sidebar, right-click a collection or folder and choose **Export** to download v2.1 JSON.
+5. **Import**: Use **Import** (top nav) to add v2.1 collections and environments from JSON—select or drop one or multiple files per type. **Export**: From **Environments**, use Export / Export all; from the sidebar, right-click a collection or folder and choose **Export** to download v2.1 JSON.
 
 ## Workspace Structure
 
