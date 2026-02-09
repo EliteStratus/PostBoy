@@ -36,6 +36,9 @@ export interface Folder {
 
 export type AuthType = 'inherit' | 'none' | 'basic' | 'bearer' | 'oauth2' | 'api-key';
 
+/** OAuth 2.0 grant type for request auth */
+export type OAuth2GrantType = 'manual' | 'authorization_code' | 'client_credentials';
+
 export interface RequestAuth {
   type: AuthType;
   /** Basic Auth */
@@ -43,8 +46,21 @@ export interface RequestAuth {
   password?: string;
   /** Bearer Token */
   token?: string;
-  /** OAuth 2.0 (Bearer-style token for now) */
+  /** OAuth 2.0 */
+  oauth2GrantType?: OAuth2GrantType;
+  /** Manual / resolved token sent as Bearer */
   oauth2Token?: string;
+  oauth2RefreshToken?: string;
+  /** Authorization Code (PKCE) */
+  oauth2AuthUrl?: string;
+  oauth2TokenUrl?: string;
+  oauth2ClientId?: string;
+  oauth2Scope?: string;
+  oauth2CallbackUrl?: string;
+  /** Client Credentials */
+  oauth2ClientSecret?: string;
+  /** Optional: token expiry (ISO string) for refresh logic */
+  oauth2ExpiresAt?: string;
   /** API Key */
   apiKeyKey?: string;
   apiKeyValue?: string;

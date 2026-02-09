@@ -9,10 +9,11 @@ A UI-based API client that runs entirely in the browser with no backend or datab
 - **Collections & folders**: Organize requests in a tree; resizable sidebar; run from a collection or a folder
 - **Environments**: Variables with See/Hide (secrets), enabled for substitution; create, edit, delete, import and export (v2.1 JSON)
 - **Collection Runner**: Tree of requests (Select All / Deselect All, Expand All / Collapse All), iterations and delay; results with Success (2xx), Failed (4xx/5xx/network), Attention (1xx/3xx); collapsible Requests and Results panels
-- **Request editor**: Method, URL, headers, auth (None, Basic, Bearer, OAuth2, API Key), body; save-before-close prompt when closing a dirty tab; response and cookies preserved per tab
+- **Request editor**: Method, URL, headers, auth (None, Basic, Bearer, OAuth 2.0, API Key), body; editable Cookie header for cross-origin; save-before-close prompt when closing a dirty tab; response and cookies preserved per tab
 - **Cookies & session**: Requests sent with `credentials: 'include'`; cookies from auth responses (e.g. Set-Cookie) shown in Response Headers/Cookies; proxy forwards Cookie/Set-Cookie for cross-origin APIs
 - **Pre/Post scripts**: JavaScript with pm-lite API in a Web Worker
-- **Import**: v2.1 collection and environment JSON; supports multiple files via file picker (multi-select) or drag-and-drop
+- **Import**: v2.1 collection and environment JSON; supports multiple files via file picker (multi-select) or drag-and-drop; import is applied to Scripts (pre-request and post-response)
+- **OAuth 2.0**: Authorization Code (PKCE), Client Credentials, Manual token; Get & Apply Token; cross-origin token/API via built-in proxy
 - **Export**: Export current or all environments (v2.1 JSON); export collection or folder from sidebar context menu (v2.1 collection JSON)
 - **Monaco Editor**: JSON, XML, JavaScript editing with syntax highlighting
 - **Response viewer**: Body, Headers, Cookies tabs; pretty-print, timing, size

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OAuth 2.0 callback - PostBoy</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 32rem; margin: 0 auto; }
+    .error { color: #c00; }
+    .success { color: #070; }
+  </style>
+</head>
+<body>
+  <p id="msg">Completing sign-in…</p>
+  <script>
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      var code = params.get('code');
+      var state = params.get('state');
+      var error = params.get('error');
+      var errorDesc = params.get('error_description');
+      var msg = document.getElementById('msg');
+
+      if (error) {
+        msg.className = 'error';
+        msg.textContent = errorDesc || error || 'Authorization failed. You can close this window.';
+        return;
+      }
+      if (!code || !state) {
+        msg.className = 'error';
+        msg.textContent = 'Missing code or state. You can close this window.';
+        return;
+      }
+      if (window.opener) {
+        window.opener.postMessage({ type: 'oauth2_callback', code: code, state: state }, window.location.origin);
+        msg.className = 'success';
+        msg.textContent = 'Sign-in complete. This window will close.';
+        window.close();
+      } else {
+        msg.className = 'error';
+        msg.textContent = 'Opener window was closed. You can close this window.';
+      }
+    })();
+  </script>
+</body>
+</html>

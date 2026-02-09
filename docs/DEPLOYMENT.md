@@ -83,6 +83,16 @@ Open `http://localhost:4173`.
 - **404 on routes:** Ensure `public/_redirects` exists with `/*    /index.html   200`
 - **File System API:** Requires HTTPS or localhost; otherwise the app uses the in-memory/ZIP fallback.
 
+## Proxy (CORS)
+
+Cross-origin API requests are sent via a **Cloudflare Pages Function** at `/proxy`. The client POSTs a JSON body `{ url, method, headers, body?, bodyType? }`; the proxy forwards the request to the target and returns the response.
+
+- **Request headers** (including `Authorization: Bearer <token>`) are sanitized for the Workers runtime and sent to the target.
+- **Response headers** from the target are sanitized; if the upstream `Content-Type` (or other header) is rejected by the runtime, the proxy falls back to `application/json` so the request still succeeds.
+- OAuth 2.0 token requests (e.g. Client Credentials) use the same proxy when the token URL is cross-origin.
+
+The proxy is implemented in `functions/proxy/[[path]].ts`.
+
 ## Environment variables
 
 None required for the app; it runs entirely in the browser.

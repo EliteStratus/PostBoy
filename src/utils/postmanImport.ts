@@ -11,11 +11,21 @@ interface PostmanCollection {
   variable?: PostmanVariable[];
 }
 
+/** Postman v2.1 event script (prerequest / test). */
+interface PostmanEvent {
+  listen: string;
+  script?: {
+    exec?: string[] | string;
+    type?: string;
+  };
+}
+
 interface PostmanItem {
   name: string;
   request?: PostmanRequest;
   item?: PostmanItem[];
   description?: string;
+  event?: PostmanEvent[];
 }
 
 interface PostmanAuthParam {
@@ -152,7 +162,8 @@ function convertPostmanAuth(pmAuth: PostmanRequest['auth']): RequestAuth | undef
   }
   if (type === 'oauth2') {
     const token = getAuthParam(pmAuth.oauth2, 'accessToken') ?? getAuthParam(pmAuth.oauth2, 'token');
-    return { type: 'oauth2', oauth2Token: token ?? '' };
+    const refreshToken = getAuthParam(pmAuth.oauth2, 'refreshToken');
+    return { type: 'oauth2', oauth2GrantType: 'manual', oauth2Token: token ?? '', oauth2RefreshToken: refreshToken };
   }
   if (type === 'apikey') {
     const key = getAuthParam(pmAuth.apikey, 'key');
@@ -208,6 +219,18 @@ function convertPostmanRequest(item: PostmanItem): Request {
   // Convert auth from Postman format to our RequestAuth
   const auth = convertPostmanAuth(pmRequest.auth);
 
+  // Convert request-level scripts from Postman events (prerequest, test)
+  let preRequestScript: string | undefined;
+  let postResponseScript: string | undefined;
+  const events = item.event ?? [];
+  for (const ev of events) {
+    const script = ev.script?.exec;
+    if (!script) continue;
+    const code = Array.isArray(script) ? script.join('\n') : script;
+    if (ev.listen === 'prerequest') preRequestScript = code;
+    else if (ev.listen === 'test') postResponseScript = code;
+  }
+
   // Convert body
   let body: Request['body'];
   if (pmRequest.body) {
@@ -249,6 +272,8 @@ function convertPostmanRequest(item: PostmanItem): Request {
     queryParams,
     body,
     auth: auth ?? { type: 'inherit' },
+    ...(preRequestScript != null && { preRequestScript }),
+    ...(postResponseScript != null && { postResponseScript }),
   };
 }
 
@@ -333,7 +358,9 @@ function requestToPostmanAuth(auth: Request['auth']): PostmanRequest['auth'] | u
     return { type: 'bearer', bearer: [{ key: 'token', value: auth.token }] };
   }
   if (auth.type === 'oauth2') {
-    return { type: 'oauth2', oauth2: [{ key: 'accessToken', value: auth.oauth2Token }] };
+    const oauth2 = [{ key: 'accessToken', value: auth.oauth2Token ?? '' }];
+    if (auth.oauth2RefreshToken) oauth2.push({ key: 'refreshToken', value: auth.oauth2RefreshToken });
+    return { type: 'oauth2', oauth2 };
   }
   if (auth.type === 'api-key') {
     return { type: 'apikey', apikey: [{ key: 'key', value: auth.apiKeyKey }, { key: 'value', value: auth.apiKeyValue }, { key: 'in', value: auth.apiKeyAddTo === 'query' ? 'query' : 'header' }] };
@@ -361,7 +388,16 @@ function requestToPostmanRequest(req: Request): PostmanRequest {
 }
 
 function requestToPostmanItem(req: Request): PostmanItem {
-  return { name: req.name, description: req.description, request: requestToPostmanRequest(req) };
+  const item: PostmanItem = { name: req.name, description: req.description, request: requestToPostmanRequest(req) };
+  const events: PostmanEvent[] = [];
+  if (req.preRequestScript?.trim()) {
+    events.push({ listen: 'prerequest', script: { type: 'text/javascript', exec: req.preRequestScript.trim().split('\n') } });
+  }
+  if (req.postResponseScript?.trim()) {
+    events.push({ listen: 'test', script: { type: 'text/javascript', exec: req.postResponseScript.trim().split('\n') } });
+  }
+  if (events.length > 0) item.event = events;
+  return item;
 }
 
 function folderToPostmanItems(folder: Folder): PostmanItem[] {

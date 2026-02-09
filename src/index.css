@@ -50,6 +50,9 @@
 
   /* Accent: Muted Violet (light mode — readable on light surfaces) */
   --color-muted-violet: #6d5a8c;
+
+  /* OAuth warning (Client secret sent from browser) — light: amber-800 */
+  --oauth-warning-text: #92400E;
 }
 
 /* Dark theme — token overrides only (teal accent) */
@@ -94,6 +97,9 @@
 
   /* Accent: Muted Violet (dark mode — slightly brighter for contrast) */
   --color-muted-violet: #a78bc4;
+
+  /* OAuth warning — dark: amber-400 */
+  --oauth-warning-text: #FACC15;
 }
 
 body {

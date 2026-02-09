@@ -262,11 +262,10 @@ export default function EnvironmentEditor() {
             </div>
             <div className="p-4">
               <div className="space-y-0">
-                <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 items-center py-1.5 px-1 text-sm font-medium text-text-muted border-b border-border mb-1">
+                <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center py-1.5 px-1 text-sm font-medium text-text-muted border-b border-border mb-1">
                   <div className="w-9 h-9 flex items-center justify-center" aria-hidden="true" />
                   <div className="text-left px-2">Variable Name</div>
                   <div className="text-left px-2">Variable Value</div>
-                  <div className="w-20 text-left px-2">Visible</div>
                   <div className="w-10" />
                 </div>
                 {currentEnv.variables.map((variable, index) => (
@@ -355,10 +354,14 @@ function VariableRow({ variable, onUpdate, onDelete }: VariableRowProps) {
     return () => clearTimeout(timeoutId);
   }, [key, value, type, enabled, variable.key, variable.value, variable.type, variable.enabled, onUpdate]);
 
-  const visibleValue = type === 'secret' ? 'Hide' : 'See';
+  const toggleVisible = () => {
+    const nextType = type === 'secret' ? 'string' : 'secret';
+    setType(nextType);
+    onUpdate({ type: nextType });
+  };
 
   return (
-    <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 items-center py-1 px-1 rounded hover:bg-surface-secondary/50">
+    <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center py-1 px-1 rounded hover:bg-surface-secondary/50">
       <label className="flex items-center justify-center w-9 h-9 cursor-pointer">
         <input
           type="checkbox"
@@ -376,27 +379,30 @@ function VariableRow({ variable, onUpdate, onDelete }: VariableRowProps) {
         value={key}
         onChange={(e) => setKey(e.target.value)}
         placeholder="Variable name"
-        className="border border-input-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-input-bg"
+        className="h-8 border border-input-border rounded px-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-input-bg text-text-primary"
       />
-      <input
-        type={type === 'secret' ? 'password' : 'text'}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Variable value"
-        className="border border-input-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-input-bg"
-      />
-      <select
-        value={visibleValue}
-        onChange={(e) => {
-          const isSee = e.target.value === 'See';
-          setType(isSee ? 'string' : 'secret');
-          onUpdate({ type: isSee ? 'string' : 'secret' });
-        }}
-        className="border border-input-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-input-bg w-20"
-      >
-        <option value="See">See</option>
-        <option value="Hide">Hide</option>
-      </select>
+      <div className="relative flex items-center min-w-0">
+        <input
+          type={type === 'secret' ? 'password' : 'text'}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Variable value"
+          className="h-8 flex-1 min-w-0 rounded-l border border-input-border border-r-0 px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:z-10"
+        />
+        <button
+          type="button"
+          onClick={toggleVisible}
+          className="h-8 px-2.5 rounded-r border border-input-border border-l-0 bg-input-bg text-primary hover:text-primary-hover focus:outline-none focus:ring-2 focus:ring-primary [&_svg]:text-current"
+          title={type === 'secret' ? 'Show' : 'Hide'}
+          aria-label={type === 'secret' ? 'Show value' : 'Hide value'}
+        >
+          {type === 'secret' ? (
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+          ) : (
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 10Q12 18 22 10M3 11L3 14M5 12L5 15M7 14L7 17M9 15L9 18M12 18L12 21M15 15L15 18M17 14L17 17M19 12L19 15M21 11L21 14" /></svg>
+          )}
+        </button>
+      </div>
       <button
         type="button"
         onClick={onDelete}

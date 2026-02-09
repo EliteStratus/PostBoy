@@ -8,9 +8,22 @@ import { useThemeStore } from '../stores/themeStore';
 import { executeRequest } from '../utils/httpExecutor';
 import { getAuthHeaders } from '../utils/requestBuilder';
 import { requestTabId } from '../utils/requestTabId';
-import type { Request, HttpMethod, RequestBody, AuthType } from '../types';
+import type { Request, RequestAuth, HttpMethod, RequestBody, AuthType, OAuth2GrantType } from '../types';
 import ResponseViewer from './ResponseViewer';
 import { VariableHighlight } from './VariableHighlight';
+import AlertDialog from './AlertDialog';
+import {
+  buildAuthorizationUrl,
+  generateCodeChallenge,
+  generateCodeVerifier,
+  generateState,
+  getDefaultCallbackUrl,
+  getTokenClientCredentials,
+  refreshAccessToken,
+  storePKCEState,
+  registerOAuth2Callback,
+  computeExpiresAt,
+} from '../utils/oauth2';
 
 function requestDeepEqual(a: Request | null, b: Request | null): boolean {
   if (a === b) return true;
@@ -61,7 +74,14 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
   const [bodyEditorHeight, setBodyEditorHeight] = useState<number>(300);
   const [scriptEditorWidth, setScriptEditorWidth] = useState<number>(0);
   const [scriptEditorHeight, setScriptEditorHeight] = useState<number>(280);
+  const [alertDialog, setAlertDialog] = useState<{ title: string; message: string; variant: 'info' | 'error' } | null>(null);
+  const [secretVisible, setSecretVisible] = useState<Record<string, boolean>>({});
+  const [oauth2TokenLoading, setOAuth2TokenLoading] = useState(false);
   const bodyEditorContainerRef = useRef<HTMLDivElement>(null);
+
+  const toggleSecretVisible = useCallback((key: string) => {
+    setSecretVisible((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
   const scriptEditorContainerRef = useRef<HTMLDivElement>(null);
   const lastRawBodyRef = useRef<{ raw: string; rawLanguage: 'json' | 'xml' | 'text' }>({ raw: '', rawLanguage: 'json' });
   const responsePaneHeightRef = useRef(responsePaneHeight);
@@ -210,6 +230,17 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
       setTabState(tabId, null);
     };
   }, [collection, folder, requestName, request, isNew, getRequest, setTabState]);
+
+  // Auto-save when request changes (including Authorization pane) after a short debounce
+  useEffect(() => {
+    if (isNew || !collection || !requestName || !request) return;
+    const t = setTimeout(() => {
+      updateRequest(collection, folder || null, requestName, request).catch((err) => {
+        console.error('Auto-save request failed:', err);
+      });
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [request, collection, folder, requestName, isNew, updateRequest]);
 
   const handleExecute = async () => {
     if (!request) return;
@@ -568,31 +599,73 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                   <div className="w-9 h-9" aria-hidden="true" />
                 </div>
               ))}
-              {/* Cookie header (always sent by browser with credentials: include) - read-only. HttpOnly cookies (e.g. SESSION) are not visible in document.cookie. */}
-              <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
-                <div className="w-9 h-9 flex items-center justify-center">
-                  <input type="checkbox" checked readOnly disabled className="w-5 h-5 rounded border-input-border opacity-70" title="Sent by browser (read-only)" />
-                </div>
-                <input
-                  type="text"
-                  readOnly
-                  value="Cookie"
-                  className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
-                />
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <input
-                    type="text"
-                    readOnly
-                    value={typeof document !== 'undefined' && document.cookie ? document.cookie : '(sent by browser—may include HttpOnly cookies e.g. SESSION)'}
-                    className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default font-mono text-xs break-all"
-                    title="HttpOnly cookies (e.g. from auth) are sent by the browser but not visible here"
-                  />
-                  {typeof document !== 'undefined' && !document.cookie && (
-                    <span className="text-xs text-text-muted px-0.5">Included with request; value hidden for HttpOnly cookies.</span>
-                  )}
-                </div>
-                <div className="w-9 h-9" aria-hidden="true" />
-              </div>
+              {/* Cookie header: editable so user can paste session cookie (needed for proxy/cross-origin). */}
+              {(() => {
+                const cookieIdx = request.headers.findIndex((h) => h.key.toLowerCase() === 'cookie');
+                const cookieHeader = cookieIdx >= 0 ? request.headers[cookieIdx] : null;
+                const cookieValue = cookieHeader?.value ?? '';
+                const placeholder = 'Paste cookie value (e.g. SESSION=abc) or leave empty';
+                return (
+                  <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
+                    <label className="flex items-center justify-center w-9 h-9 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={cookieHeader?.enabled ?? false}
+                        onChange={(e) => {
+                          if (cookieIdx >= 0) {
+                            const next = [...request.headers];
+                            next[cookieIdx] = { ...next[cookieIdx], enabled: e.target.checked };
+                            setRequest({ ...request, headers: next });
+                          } else {
+                            setRequest({
+                              ...request,
+                              headers: [...request.headers, { key: 'Cookie', value: '', enabled: e.target.checked }],
+                            });
+                          }
+                        }}
+                        className="w-5 h-5 rounded border-input-border"
+                        title="Send Cookie header with request"
+                      />
+                    </label>
+                    <input
+                      type="text"
+                      readOnly
+                      value="Cookie"
+                      className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
+                    />
+                    <div className="relative bg-input-bg rounded border border-input-border h-9 min-w-0">
+                      <input
+                        type="text"
+                        value={cookieValue}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (cookieIdx >= 0) {
+                            if (!v.trim()) {
+                              setRequest({
+                                ...request,
+                                headers: request.headers.filter((_, i) => i !== cookieIdx),
+                              });
+                            } else {
+                              const next = [...request.headers];
+                              next[cookieIdx] = { ...next[cookieIdx], value: v };
+                              setRequest({ ...request, headers: next });
+                            }
+                          } else if (v.trim()) {
+                            setRequest({
+                              ...request,
+                              headers: [...request.headers, { key: 'Cookie', value: v, enabled: true }],
+                            });
+                          }
+                        }}
+                        placeholder={placeholder}
+                        className="w-full h-full rounded px-2 py-1.5 bg-transparent font-mono text-xs border-0"
+                        title="Paste your session cookie here; required for cookie auth when using proxy (cross-origin)."
+                      />
+                    </div>
+                    <div className="w-9 h-9" aria-hidden="true" />
+                  </div>
+                );
+              })()}
               {request.headers.map((header, index) => (
                 <div key={index} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
                   <label className="flex items-center justify-center w-9 h-9 cursor-pointer">
@@ -691,10 +764,12 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                 value={request.auth?.type ?? 'inherit'}
                 onChange={(e) => {
                   const type = e.target.value as AuthType;
-                  setRequest({
-                    ...request,
-                    auth: { ...(request.auth || { type: 'inherit' }), type, username: undefined, password: undefined, token: undefined, oauth2Token: undefined, apiKeyKey: undefined, apiKeyValue: undefined, apiKeyAddTo: undefined },
-                  });
+                  const prev = request.auth || { type: 'inherit' };
+                  const next: RequestAuth = { ...prev, type };
+                  if (type === 'oauth2' && next.oauth2GrantType == null) {
+                    next.oauth2GrantType = 'client_credentials';
+                  }
+                  setRequest({ ...request, auth: next });
                 }}
                 className="max-w-[14rem] w-full border border-input-border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-input-bg text-text-primary text-sm"
               >
@@ -722,7 +797,7 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                   <>Key/value credential (e.g. from API gateways). <span className="font-medium text-text-secondary">If Header:</span> adds <code className="text-xs bg-surface px-1 rounded">&lt;key&gt;: &lt;value&gt;</code> (e.g. <code className="text-xs bg-surface px-1 rounded">x-api-key: &lt;value&gt;</code>). <span className="font-medium text-text-secondary">If Query:</span> appends <code className="text-xs bg-surface px-1 rounded">?&lt;key&gt;=&lt;value&gt;</code> (URL-encoded). Values can use variables like <code className="text-xs bg-surface px-1 rounded">{'{{apiKey}}'}</code>.</>
                 )}
                 {request.auth?.type === 'oauth2' && (
-                  <>Uses the configured token to send an <span className="font-medium text-text-secondary">Authorization</span> header. Default: <code className="text-xs bg-surface px-1 rounded">Authorization: Bearer &lt;access_token&gt;</code>. Token type defaults to Bearer; header name defaults to Authorization. No token refresh or auth-code exchange in this version.</>
+                  <>Sends <code className="text-xs bg-surface px-1 rounded">Authorization: Bearer &lt;token&gt;</code>. Use <strong>Manual</strong> to paste a token; <strong>Authorization Code (PKCE)</strong> to sign in in a popup and get tokens; or <strong>Client Credentials</strong> to get a token with client ID and secret (use with caution in browser).</>
                 )}
               </div>
             </div>
@@ -820,34 +895,374 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                 </div>
               )}
               {request.auth?.type === 'oauth2' && (
-                <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 items-center w-full min-w-0">
-                  <label className="text-sm font-medium text-text-primary">Access Token</label>
-                  <div className="relative bg-input-bg rounded border border-input-border focus-within:ring-2 focus-within:ring-primary h-9 min-w-0">
-                    <input
-                      value={request.auth.oauth2Token ?? ''}
+                <div className="w-full max-w-2xl self-start">
+                  {/* Grant Type — label and control in one row */}
+                  <section className="mb-4 flex items-center gap-3">
+                    <span className="text-sm font-semibold text-text-primary shrink-0">Grant Type</span>
+                    <select
+                      value={request.auth.oauth2GrantType ?? 'client_credentials'}
                       onChange={(e) => {
-                        const wasFocused = document.activeElement === e.target;
-                        setRequest({ ...request, auth: { ...request.auth!, oauth2Token: e.target.value } });
-                        if (wasFocused && e.target instanceof HTMLInputElement) {
-                          requestAnimationFrame(() => {
-                            e.target.focus();
-                            const len = e.target.value.length;
-                            e.target.setSelectionRange(len, len);
-                          });
-                        }
+                        const grant = e.target.value as OAuth2GrantType;
+                        setRequest({
+                          ...request,
+                          auth: {
+                            ...request.auth!,
+                            oauth2GrantType: grant,
+                            oauth2Token: request.auth?.oauth2Token,
+                            oauth2RefreshToken: request.auth?.oauth2RefreshToken,
+                          },
+                        });
                       }}
-                      placeholder="OAuth 2.0 access token"
-                      className="w-full h-full rounded px-3 py-1.5 bg-transparent border-0 focus:outline-none relative z-10"
-                      style={{ color: 'transparent', caretColor: 'var(--color-text-primary)' }}
-                    />
-                    <div className="absolute inset-0 pointer-events-none px-3 py-1.5 flex items-center overflow-hidden z-20" style={{ color: 'var(--color-text-primary)' }}>
-                      {request.auth.oauth2Token ? (
-                        <VariableHighlight text={request.auth.oauth2Token} context={variableContext} />
-                      ) : (
-                        <span style={{ color: 'var(--color-text-muted)' }}>OAuth 2.0 access token</span>
+                      className="h-8 max-w-xs border border-input-border rounded px-3 focus:outline-none focus:ring-2 focus:ring-primary bg-input-bg text-text-primary text-sm"
+                    >
+                      <option value="manual">Access Token (manual)</option>
+                      <option value="authorization_code">Authorization Code (PKCE)</option>
+                      <option value="client_credentials">Client Credentials</option>
+                    </select>
+                  </section>
+                  {/* Provider settings — single aligned grid */}
+                  <section className="grid grid-cols-[minmax(10rem,auto)_1fr] gap-x-4 gap-y-3 items-center">
+                  {(request.auth.oauth2GrantType === 'manual') && (
+                    <>
+                      <label className="text-sm font-medium text-text-primary">Access Token</label>
+                      <div className="relative flex items-center min-w-0">
+                        <input
+                          type={secretVisible.oauth2AccessToken ? 'text' : 'password'}
+                          value={request.auth.oauth2Token ?? ''}
+                          onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2Token: e.target.value } })}
+                          placeholder="Paste access token or use variable e.g. {{accessToken}}"
+                          className="h-8 flex-1 min-w-0 rounded-l border border-input-border border-r-0 px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:z-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => toggleSecretVisible('oauth2AccessToken')}
+                          className="h-8 px-2.5 rounded-r border border-input-border border-l-0 bg-input-bg text-primary hover:text-primary-hover focus:outline-none focus:ring-2 focus:ring-primary [&_svg]:text-current"
+                          title={secretVisible.oauth2AccessToken ? 'Hide' : 'Show'}
+                          aria-label={secretVisible.oauth2AccessToken ? 'Hide token' : 'Show token'}
+                        >
+                          {secretVisible.oauth2AccessToken ? (
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 10Q12 18 22 10M3 11L3 14M5 12L5 15M7 14L7 17M9 15L9 18M12 18L12 21M15 15L15 18M17 14L17 17M19 12L19 15M21 11L21 14" /></svg>
+                          ) : (
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          )}
+                        </button>
+                      </div>
+                      <label className="text-sm font-medium text-text-primary">Refresh Token (optional)</label>
+                      <div className="relative flex items-center min-w-0">
+                        <input
+                          type={secretVisible.oauth2RefreshToken ? 'text' : 'password'}
+                          value={request.auth.oauth2RefreshToken ?? ''}
+                          onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2RefreshToken: e.target.value } })}
+                          placeholder="For Refresh button / scripts"
+                          className="h-8 flex-1 min-w-0 rounded-l border border-input-border border-r-0 px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:z-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => toggleSecretVisible('oauth2RefreshToken')}
+                          className="h-8 px-2.5 rounded-r border border-input-border border-l-0 bg-input-bg text-primary hover:text-primary-hover focus:outline-none focus:ring-2 focus:ring-primary [&_svg]:text-current"
+                          title={secretVisible.oauth2RefreshToken ? 'Hide' : 'Show'}
+                          aria-label={secretVisible.oauth2RefreshToken ? 'Hide refresh token' : 'Show refresh token'}
+                        >
+                          {secretVisible.oauth2RefreshToken ? (
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 10Q12 18 22 10M3 11L3 14M5 12L5 15M7 14L7 17M9 15L9 18M12 18L12 21M15 15L15 18M17 14L17 17M19 12L19 15M21 11L21 14" /></svg>
+                          ) : (
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          )}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {request.auth.oauth2GrantType === 'authorization_code' && (
+                    <>
+                      <label className="text-sm font-medium text-text-primary">Auth URL</label>
+                      <input
+                        type="url"
+                        value={request.auth.oauth2AuthUrl ?? ''}
+                        onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2AuthUrl: e.target.value } })}
+                        placeholder="https://auth.example.com/authorize"
+                        className="h-8 min-w-0 border border-input-border rounded px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <label className="text-sm font-medium text-text-primary">Token URL</label>
+                      <input
+                        type="url"
+                        value={request.auth.oauth2TokenUrl ?? ''}
+                        onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2TokenUrl: e.target.value } })}
+                        placeholder="https://auth.example.com/token"
+                        className="h-8 min-w-0 border border-input-border rounded px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <label className="text-sm font-medium text-text-primary">Client ID</label>
+                      <input
+                        type="text"
+                        value={request.auth.oauth2ClientId ?? ''}
+                        onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2ClientId: e.target.value } })}
+                        placeholder="Client ID (no secret for PKCE)"
+                        className="h-8 min-w-0 border border-input-border rounded px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <label className="text-sm font-medium text-text-primary">Scope</label>
+                      <input
+                        type="text"
+                        value={request.auth.oauth2Scope ?? ''}
+                        onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2Scope: e.target.value } })}
+                        placeholder="e.g. openid profile"
+                        className="h-8 min-w-0 border border-input-border rounded px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <label className="text-sm font-medium text-text-primary">Callback URL</label>
+                      <input
+                        type="url"
+                        value={request.auth.oauth2CallbackUrl ?? getDefaultCallbackUrl()}
+                        onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2CallbackUrl: e.target.value } })}
+                        placeholder={getDefaultCallbackUrl()}
+                        className="h-8 min-w-0 border border-input-border rounded px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      {(!request.auth?.oauth2AuthUrl?.trim() || !request.auth?.oauth2TokenUrl?.trim() || !request.auth?.oauth2ClientId?.trim()) && (
+                        <p className="text-sm text-text-muted col-span-2">Fill in Auth URL, Token URL, and Client ID above, then click the button below.</p>
                       )}
-                    </div>
-                  </div>
+                      <span className="text-sm font-medium text-text-primary" />
+                      <div className="min-w-0 mb-8">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const auth = request.auth!;
+                            const authUrl = auth.oauth2AuthUrl?.trim();
+                            const tokenUrl = auth.oauth2TokenUrl?.trim();
+                            const clientId = auth.oauth2ClientId?.trim();
+                            const missing: string[] = [];
+                            if (!authUrl) missing.push('Auth URL');
+                            if (!tokenUrl) missing.push('Token URL');
+                            if (!clientId) missing.push('Client ID');
+                            if (missing.length > 0) {
+                              setAlertDialog({ title: 'Missing fields', message: 'Please fill in: ' + missing.join(', '), variant: 'error' });
+                              return;
+                            }
+                            try {
+                              // Open popup immediately (synchronously) so it isn't blocked; navigate after async PKCE
+                              const popup = window.open('about:blank', 'oauth2_popup', 'width=520,height=640,scrollbars=yes');
+                              if (!popup) {
+                                setAlertDialog({ title: 'Popup blocked', message: 'Please allow popups for this site and try again.', variant: 'error' });
+                                return;
+                              }
+                              const redirectUri = (auth.oauth2CallbackUrl || getDefaultCallbackUrl()).trim();
+                              const state = generateState();
+                              const codeVerifier = generateCodeVerifier();
+                              const codeChallenge = await generateCodeChallenge(codeVerifier);
+                              storePKCEState(state, { tokenUrl: tokenUrl!, clientId: clientId!, codeVerifier, redirectUri });
+                              registerOAuth2Callback(state, (tokens) => {
+                                setRequest({
+                                  ...request,
+                                  auth: {
+                                    ...auth,
+                                    oauth2Token: tokens.access_token,
+                                    oauth2RefreshToken: tokens.refresh_token ?? auth.oauth2RefreshToken,
+                                    oauth2ExpiresAt: computeExpiresAt(tokens.expires_in),
+                                  },
+                                });
+                              });
+                              const url = buildAuthorizationUrl({
+                                authUrl: authUrl!,
+                                clientId: clientId!,
+                                redirectUri,
+                                scope: auth.oauth2Scope?.trim() || undefined,
+                                codeChallenge,
+                                state,
+                              });
+                              popup.location.href = url;
+                            } catch (err) {
+                              const msg = err instanceof Error ? err.message : String(err);
+                              setAlertDialog({ title: 'OAuth error', message: msg, variant: 'error' });
+                            }
+                          }}
+                          title="Open sign-in in a popup (fill Auth URL, Token URL, Client ID first)"
+                          className="h-8 bg-primary text-on-primary px-4 rounded hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-surface-secondary flex items-center"
+                        >
+                          Get & Apply Token
+                        </button>
+                      </div>
+                      {(request.auth.oauth2Token != null && request.auth.oauth2Token !== '') && (
+                        <>
+                          <label className="text-sm font-medium text-text-primary mt-6">Current Token</label>
+                          <div className="relative flex min-w-0 rounded border border-input-border bg-surface-secondary">
+                            <textarea
+                              readOnly
+                              value={secretVisible.oauth2CurrentToken ? (request.auth.oauth2Token ?? '') : '•••••••• (Bearer)'}
+                              rows={8}
+                              className="min-h-[10rem] flex-1 min-w-0 border-0 bg-transparent rounded px-3 py-2 pr-10 resize-none text-sm font-mono text-text-primary focus:outline-none cursor-default"
+                              tabIndex={-1}
+                              aria-label="Current access token"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => toggleSecretVisible('oauth2CurrentToken')}
+                              className="absolute top-2 right-2 p-1.5 rounded text-primary hover:text-primary-hover focus:outline-none focus:ring-2 focus:ring-primary [&_svg]:text-current"
+                              title={secretVisible.oauth2CurrentToken ? 'Hide' : 'Show'}
+                              aria-label={secretVisible.oauth2CurrentToken ? 'Hide token' : 'Show token'}
+                            >
+                              {secretVisible.oauth2CurrentToken ? (
+                                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 10Q12 18 22 10M3 11L3 14M5 12L5 15M7 14L7 17M9 15L9 18M12 18L12 21M15 15L15 18M17 14L17 17M19 12L19 15M21 11L21 14" /></svg>
+                              ) : (
+                                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                              )}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {(request.auth.oauth2GrantType === 'client_credentials' || request.auth.oauth2GrantType == null) && (
+                    <>
+                      <p className="text-sm col-span-2 mb-6" style={{ color: 'var(--oauth-warning-text)' }}>Client secret will be sent from the browser. Use only with trusted token endpoints.</p>
+                      <span className="col-span-2" />
+                      <label className="text-sm font-medium text-text-primary">Token URL</label>
+                      <input
+                        type="url"
+                        value={request.auth.oauth2TokenUrl ?? ''}
+                        onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2TokenUrl: e.target.value } })}
+                        placeholder="https://auth.example.com/token"
+                        className="h-8 min-w-0 border border-input-border rounded px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <label className="text-sm font-medium text-text-primary">Client ID</label>
+                      <input
+                        type="text"
+                        value={request.auth.oauth2ClientId ?? ''}
+                        onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2ClientId: e.target.value } })}
+                        placeholder="Client ID"
+                        className="h-8 min-w-0 border border-input-border rounded px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <label className="text-sm font-medium text-text-primary">Client Secret</label>
+                      <div className="relative flex items-center min-w-0">
+                        <input
+                          type={secretVisible.oauth2ClientSecret ? 'text' : 'password'}
+                          value={request.auth.oauth2ClientSecret ?? ''}
+                          onChange={(e) => setRequest({ ...request, auth: { ...request.auth!, oauth2ClientSecret: e.target.value } })}
+                          placeholder="Client secret"
+                          className="h-8 flex-1 min-w-0 rounded-l border border-input-border border-r-0 px-3 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:z-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => toggleSecretVisible('oauth2ClientSecret')}
+                          className="h-8 px-2.5 rounded-r border border-input-border border-l-0 bg-input-bg text-primary hover:text-primary-hover focus:outline-none focus:ring-2 focus:ring-primary [&_svg]:text-current"
+                          title={secretVisible.oauth2ClientSecret ? 'Hide' : 'Show'}
+                          aria-label={secretVisible.oauth2ClientSecret ? 'Hide client secret' : 'Show client secret'}
+                        >
+                          {secretVisible.oauth2ClientSecret ? (
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 10Q12 18 22 10M3 11L3 14M5 12L5 15M7 14L7 17M9 15L9 18M12 18L12 21M15 15L15 18M17 14L17 17M19 12L19 15M21 11L21 14" /></svg>
+                          ) : (
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          )}
+                        </button>
+                      </div>
+                      <span className="text-sm font-medium text-text-primary" />
+                      <div className="min-w-0 mb-8">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const auth = request.auth!;
+                            const tokenUrl = auth.oauth2TokenUrl?.trim();
+                            const clientId = auth.oauth2ClientId?.trim();
+                            const clientSecret = auth.oauth2ClientSecret ?? '';
+                            const missing: string[] = [];
+                            if (!tokenUrl) missing.push('Token URL');
+                            if (!clientId) missing.push('Client ID');
+                            if (!clientSecret) missing.push('Client Secret');
+                            if (missing.length > 0) {
+                              setAlertDialog({ title: 'Missing fields', message: 'Please fill in: ' + missing.join(', '), variant: 'error' });
+                              return;
+                            }
+                            setOAuth2TokenLoading(true);
+                            try {
+                              const tokens = await getTokenClientCredentials({ tokenUrl: tokenUrl!, clientId: clientId!, clientSecret, scope: auth.oauth2Scope?.trim() || undefined });
+                              setRequest({
+                                ...request,
+                                auth: {
+                                  ...auth,
+                                  oauth2Token: tokens.access_token,
+                                  oauth2ExpiresAt: computeExpiresAt(tokens.expires_in),
+                                },
+                              });
+                            } catch (err) {
+                              const msg = err instanceof Error ? err.message : String(err);
+                              setAlertDialog({ title: 'Token request failed', message: msg, variant: 'error' });
+                            } finally {
+                              setOAuth2TokenLoading(false);
+                            }
+                          }}
+                          disabled={oauth2TokenLoading}
+                          className="h-8 bg-primary text-on-primary px-4 rounded hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-surface-secondary flex items-center gap-2"
+                        >
+                          {oauth2TokenLoading ? (
+                            <>
+                              <svg className="w-4 h-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="47 15" />
+                              </svg>
+                              Getting token…
+                            </>
+                          ) : (
+                            'Get & Apply Token'
+                          )}
+                        </button>
+                      </div>
+                      {(request.auth.oauth2Token != null && request.auth.oauth2Token !== '') && (
+                        <>
+                          <label className="text-sm font-medium text-text-primary mt-6">Current Token</label>
+                          <div className="relative flex min-w-0 rounded border border-input-border bg-surface-secondary">
+                            <textarea
+                              readOnly
+                              value={secretVisible.oauth2CurrentToken ? (request.auth.oauth2Token ?? '') : '•••••••• (Bearer)'}
+                              rows={8}
+                              className="min-h-[10rem] flex-1 min-w-0 border-0 bg-transparent rounded px-3 py-2 pr-10 resize-none text-sm font-mono text-text-primary focus:outline-none cursor-default"
+                              tabIndex={-1}
+                              aria-label="Current access token"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => toggleSecretVisible('oauth2CurrentToken')}
+                              className="absolute top-2 right-2 p-1.5 rounded text-primary hover:text-primary-hover focus:outline-none focus:ring-2 focus:ring-primary [&_svg]:text-current"
+                              title={secretVisible.oauth2CurrentToken ? 'Hide' : 'Show'}
+                              aria-label={secretVisible.oauth2CurrentToken ? 'Hide token' : 'Show token'}
+                            >
+                              {secretVisible.oauth2CurrentToken ? (
+                                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 10Q12 18 22 10M3 11L3 14M5 12L5 15M7 14L7 17M9 15L9 18M12 18L12 21M15 15L15 18M17 14L17 17M19 12L19 15M21 11L21 14" /></svg>
+                              ) : (
+                                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                              )}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {request.auth?.oauth2RefreshToken && request.auth?.oauth2TokenUrl && (request.auth.oauth2GrantType === 'manual' || request.auth.oauth2GrantType === 'authorization_code') && (
+                    <>
+                      <label className="text-sm font-medium text-text-primary">Refresh</label>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const auth = request.auth!;
+                          try {
+                            const tokens = await refreshAccessToken({
+                              tokenUrl: auth.oauth2TokenUrl!,
+                              refreshToken: auth.oauth2RefreshToken!,
+                              clientId: auth.oauth2ClientId ?? '',
+                            });
+                            setRequest({
+                              ...request,
+                              auth: {
+                                ...auth,
+                                oauth2Token: tokens.access_token,
+                                oauth2RefreshToken: tokens.refresh_token ?? auth.oauth2RefreshToken,
+                                oauth2ExpiresAt: computeExpiresAt(tokens.expires_in),
+                              },
+                            });
+                          } catch (err) {
+                            console.error('OAuth2 refresh failed', err);
+                          }
+                        }}
+                        className="px-3 py-2 rounded border border-border bg-surface text-text-primary text-sm hover:bg-surface-secondary disabled:opacity-50"
+                      >
+                        Refresh Access Token
+                      </button>
+                    </>
+                  )}
+                  </section>
                 </div>
               )}
               {request.auth?.type === 'api-key' && (
@@ -1289,6 +1704,14 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
       >
         <ResponseViewer response={response} error={error} />
       </div>
+
+      <AlertDialog
+        isOpen={alertDialog !== null}
+        title={alertDialog?.title ?? ''}
+        message={alertDialog?.message ?? ''}
+        variant={alertDialog?.variant ?? 'error'}
+        onClose={() => setAlertDialog(null)}
+      />
     </div>
   );
 }

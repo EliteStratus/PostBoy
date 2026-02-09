@@ -1,4 +1,5 @@
 import type { Request, HttpResponse, Environment } from '../types';
+import { getStoredCookies, setStoredCookiesFromSetCookie } from './cookieStore';
 import { buildRequest } from './requestBuilder';
 import { executeScript, type ScriptContext } from './scriptExecutor';
 
@@ -48,6 +49,19 @@ export async function executeRequest(
     // Build request with updated environment
     const builtRequest = buildRequest(request, environment);
 
+    // Automatically add stored cookies for this origin (from previous Set-Cookie responses)
+    try {
+      const origin = new URL(builtRequest.url).origin;
+      const stored = getStoredCookies(origin);
+      if (stored) {
+        const existing = builtRequest.headers['Cookie'] ?? builtRequest.headers['cookie'];
+        builtRequest.headers['Cookie'] = existing ? `${existing}; ${stored}` : stored;
+        delete builtRequest.headers['cookie']; // avoid duplicate
+      }
+    } catch {
+      // ignore invalid URL
+    }
+
     // Execute HTTP request
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -77,33 +91,31 @@ export async function executeRequest(
       // Use proxy if needed to bypass CORS
       if (needsProxy) {
         const proxyUrl = new URL('/proxy', window.location.origin);
-        proxyUrl.searchParams.set('url', builtRequest.url);
-        proxyUrl.searchParams.set('method', builtRequest.method);
-        proxyUrl.searchParams.set('headers', JSON.stringify(builtRequest.headers));
-        
-        // Handle body - only string bodies can be passed via query params
+        // Use JSON body so Bearer token (base64 with +) is not corrupted by form-urlencoded + → space
+        const proxyPayload: { url: string; method: string; headers: Record<string, string>; body?: string; bodyType?: string } = {
+          url: builtRequest.url,
+          method: builtRequest.method,
+          headers: builtRequest.headers,
+        };
         if (builtRequest.body) {
           if (typeof builtRequest.body === 'string') {
-            proxyUrl.searchParams.set('body', builtRequest.body);
-            fetchOptions.body = undefined; // Body passed as query param
+            proxyPayload.body = builtRequest.body;
           } else if (builtRequest.body instanceof FormData) {
-            // FormData can't be passed via query params, so we'll need to handle this differently
-            // For now, convert FormData to a format we can pass
             const formDataObj: Record<string, string> = {};
             builtRequest.body.forEach((value, key) => {
               formDataObj[key] = value.toString();
             });
-            proxyUrl.searchParams.set('body', JSON.stringify(formDataObj));
-            proxyUrl.searchParams.set('bodyType', 'formdata');
-            fetchOptions.body = undefined;
+            proxyPayload.body = JSON.stringify(formDataObj);
+            proxyPayload.bodyType = 'formdata';
           }
         }
-        
         finalUrl = proxyUrl.toString();
-        // Remove headers for proxy request (they're passed as query params)
+        fetchOptions.method = 'POST';
+        fetchOptions.body = JSON.stringify(proxyPayload);
         fetchOptions.headers = {
-          'Content-Type': 'application/x-www-form-urlencoded', // Cloudflare Pages Functions expect this
+          'Content-Type': 'application/json',
         };
+        fetchOptions.credentials = 'omit';
       }
 
       const response = await fetch(finalUrl, fetchOptions);
@@ -136,6 +148,17 @@ export async function executeRequest(
         } else {
           const single = response.headers.get('set-cookie');
           if (single != null) responseHeaders['Set-Cookie'] = single;
+        }
+      }
+
+      // Store Set-Cookie for this origin so we send it automatically on the next request
+      const setCookieValue = responseHeaders['Set-Cookie'];
+      if (setCookieValue) {
+        try {
+          const origin = new URL(builtRequest.url).origin;
+          setStoredCookiesFromSetCookie(origin, setCookieValue);
+        } catch {
+          // ignore
         }
       }
 

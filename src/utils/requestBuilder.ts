@@ -1,6 +1,24 @@
 import type { Request, RequestAuth, Environment } from '../types';
 import { substituteVariables, type VariableContext } from './variableSubstitution';
 
+/** Remove characters invalid in HTTP header values to avoid "Invalid header value" errors (proxy/fetch). */
+function sanitizeHeaderValue(value: string): string {
+  return value
+    .replace(/[\r\n\x00-\x1f\x7f]/g, '')
+    .replace(/["\\]/g, '')
+    .trim();
+}
+
+/** Cookie values may contain = ; " — only strip control chars so they are not corrupted. */
+function sanitizeCookieValue(value: string): string {
+  return value.replace(/[\r\n\x00-\x1f\x7f]/g, '').trim();
+}
+
+/** Sanitize header name for safe use in requests. */
+function sanitizeHeaderName(name: string): string {
+  return name.replace(/[\r\n\x00-\x1f\x7f]/g, '').trim().slice(0, 256);
+}
+
 export interface BuiltRequest {
   url: string;
   method: string;
@@ -33,33 +51,46 @@ export function buildRequest(
     url += separator + queryParams.join('&');
   }
 
-  // Build headers
+  // Build headers (sanitize keys and values to avoid "Invalid header value" at proxy)
   const headers: Record<string, string> = {};
+  const auth: RequestAuth | undefined = request.auth?.type ? request.auth : { type: 'inherit' };
+  const authSetsAuthorization = auth.type === 'basic' || auth.type === 'bearer' || (auth.type === 'oauth2' && auth.oauth2Token != null);
   request.headers
     .filter(h => h.enabled)
     .forEach(h => {
-      const key = substituteVariables(h.key, context);
-      const value = substituteVariables(h.value, context);
-      headers[key] = value;
+      const key = sanitizeHeaderName(substituteVariables(h.key, context));
+      if (!key) return;
+      // Don't allow a manual Authorization header to override or duplicate auth—avoids "Invalid header value"
+      if (key.toLowerCase() === 'authorization') {
+        if (authSetsAuthorization) return;
+        // Never send placeholder values even when no auth type is set (avoids proxy "Invalid header value")
+        const rawValue = substituteVariables(h.value, context);
+        const v = sanitizeHeaderValue(rawValue);
+        if (v.toLowerCase().trim() === 'value' || (v.length < 20 && !v.startsWith('Bearer ') && !v.startsWith('Basic '))) return;
+      }
+      const rawValue = substituteVariables(h.value, context);
+      const value = key.toLowerCase() === 'cookie' ? sanitizeCookieValue(rawValue) : sanitizeHeaderValue(rawValue);
+      // Only skip Cookie when it's the read-only placeholder (so real cookie-based auth still works)
+      if (key.toLowerCase() === 'cookie' && (value === '' || value.includes('Sent by browser with request'))) return;
+      if (value) headers[key] = value;
     });
 
-  // Apply authorization
-  const auth: RequestAuth | undefined = request.auth?.type ? request.auth : { type: 'inherit' };
+  // Apply authorization (overwrites any remaining Authorization key)
   if (auth.type === 'basic' && auth.username != null) {
     const username = substituteVariables(auth.username, context);
     const password = substituteVariables(auth.password ?? '', context);
     headers['Authorization'] = 'Basic ' + btoa(unescape(encodeURIComponent(username + ':' + password)));
   } else if (auth.type === 'bearer' && auth.token != null) {
-    headers['Authorization'] = 'Bearer ' + substituteVariables(auth.token, context);
+    headers['Authorization'] = 'Bearer ' + sanitizeHeaderValue(substituteVariables(auth.token, context));
   } else if (auth.type === 'oauth2' && auth.oauth2Token != null) {
-    headers['Authorization'] = 'Bearer ' + substituteVariables(auth.oauth2Token, context);
+    headers['Authorization'] = 'Bearer ' + sanitizeHeaderValue(substituteVariables(auth.oauth2Token, context));
   } else if (auth.type === 'api-key' && auth.apiKeyKey != null && auth.apiKeyValue != null) {
-    const key = substituteVariables(auth.apiKeyKey, context);
-    const value = substituteVariables(auth.apiKeyValue, context);
+    const key = sanitizeHeaderName(substituteVariables(auth.apiKeyKey, context));
+    const value = sanitizeHeaderValue(substituteVariables(auth.apiKeyValue, context));
     if (auth.apiKeyAddTo === 'query') {
       const sep = url.includes('?') ? '&' : '?';
       url += sep + encodeURIComponent(key) + '=' + encodeURIComponent(value);
-    } else {
+    } else if (key && value) {
       headers[key] = value;
     }
   }
@@ -129,9 +160,9 @@ export function getAuthHeaders(
     const password = substituteVariables(auth.password ?? '', context);
     result.push({ key: 'Authorization', value: 'Basic ' + btoa(unescape(encodeURIComponent(username + ':' + password))) });
   } else if (auth.type === 'bearer' && auth.token != null) {
-    result.push({ key: 'Authorization', value: 'Bearer ' + substituteVariables(auth.token, context) });
+    result.push({ key: 'Authorization', value: 'Bearer ' + sanitizeHeaderValue(substituteVariables(auth.token, context)) });
   } else if (auth.type === 'oauth2' && auth.oauth2Token != null) {
-    result.push({ key: 'Authorization', value: 'Bearer ' + substituteVariables(auth.oauth2Token, context) });
+    result.push({ key: 'Authorization', value: 'Bearer ' + sanitizeHeaderValue(substituteVariables(auth.oauth2Token, context)) });
   } else if (auth.type === 'api-key' && auth.apiKeyKey != null && auth.apiKeyValue != null && auth.apiKeyAddTo !== 'query') {
     result.push({
       key: substituteVariables(auth.apiKeyKey, context),

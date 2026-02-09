@@ -5,6 +5,12 @@ import { useEnvironmentsStore } from './stores/environmentsStore';
 import Layout from './components/Layout';
 import WorkspaceSelector from './components/WorkspaceSelector';
 import { fileSystemManager } from './utils/fileSystem';
+import {
+  consumePKCEState,
+  exchangeCodeForTokens,
+  getOAuth2Callback,
+  type TokenResponse,
+} from './utils/oauth2';
 
 function App() {
   const { isOpen } = useWorkspaceStore();
@@ -52,6 +58,33 @@ function App() {
       return () => cancelAnimationFrame(id);
     }
   }, [isOpen, loadCollections, loadEnvironments]);
+
+  // OAuth 2.0 Authorization Code (PKCE) popup callback: exchange code for tokens and notify caller
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || data.type !== 'oauth2_callback' || !data.code || !data.state) return;
+      const payload = consumePKCEState(data.state);
+      if (!payload) return;
+      try {
+        const tokens: TokenResponse = await exchangeCodeForTokens({
+          tokenUrl: payload.tokenUrl,
+          code: data.code,
+          redirectUri: payload.redirectUri,
+          codeVerifier: payload.codeVerifier,
+          clientId: payload.clientId,
+        });
+        const cb = getOAuth2Callback(data.state);
+        if (cb) cb(tokens);
+      } catch {
+        getOAuth2Callback(data.state);
+        // Callback not invoked on error; user can try "Get New Access Token" again
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   if (!isOpen) {
     return <WorkspaceSelector />;
