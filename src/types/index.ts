@@ -86,6 +86,8 @@ export interface Header {
   key: string;
   value: string;
   enabled: boolean;
+  /** When true, value is masked in the UI (Hide/Show toggle). */
+  valueHidden?: boolean;
 }
 
 export interface QueryParam {

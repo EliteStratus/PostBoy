@@ -126,3 +126,13 @@ code {
 input[type="checkbox"] {
   accent-color: var(--color-primary);
 }
+
+/* Monaco editor: variable resolution styling (matches VariableHighlight) */
+.monaco-variable-resolved {
+  color: var(--color-info) !important;
+  font-weight: 600;
+}
+.monaco-variable-unresolved {
+  color: var(--color-error) !important;
+  font-weight: 600;
+}

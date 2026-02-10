@@ -1,0 +1,47 @@
+---
+description: When the user says "cleanup", run a full repo cleanup so they can commit and push
+alwaysApply: true
+---
+
+# Cleanup Workflow
+
+When the user says **"cleanup"** (or "clean up"), perform a full repository cleanup so the codebase is ready to commit and push. Execute the following in order.
+
+## 1. Remove obsolete code and dead code
+
+- Search for and remove commented-out blocks that are no longer needed.
+- Remove unused exports, functions, variables, and imports (use grep/search to find references).
+- Remove duplicate or redundant logic.
+- Delete obsolete types or interfaces that are no longer referenced.
+
+## 2. Remove unused files
+
+- Identify files that are not imported or referenced anywhere (e.g. orphan components, unused utils, stale scripts).
+- Delete only after confirming they are not used (search the repo for the file name or key symbols).
+- Remove empty or obsolete config/template files if any.
+
+## 3. Update documents
+
+- Update `README.md` if features, setup, or scripts have changed.
+- Update `docs/` files (e.g. IMPLEMENTATION_PLAN, DEPLOYMENT, specs) to match current behavior.
+- Fix broken or outdated links and code samples in docs.
+- Remove or archive docs that describe removed features; add a short note if something was deprecated.
+
+## 4. Code quality
+
+- Fix any linter errors or warnings in modified/cleaned files.
+- Align formatting with the rest of the project (e.g. trailing commas, quotes) where you touch code.
+- Do not refactor working code purely for style unless the user asked for it; focus on cleanup.
+
+## 5. Verify and build
+
+- Run the project linter (e.g. `npm run lint` if present) and fix issues.
+- Run `npm run build` to ensure the app still builds (and deploy, per project rules).
+- If tests exist, run them and fix failures caused by the cleanup.
+
+## 6. Summarize for commit
+
+- List what was removed (files, dead code, obsolete docs) and what was updated.
+- Suggest a short commit message, e.g. `chore: cleanup obsolete code, unused files, and update docs`.
+
+If something is ambiguous (e.g. a file might still be used elsewhere), ask the user before deleting. Prefer safe, incremental cleanup over aggressive deletion.

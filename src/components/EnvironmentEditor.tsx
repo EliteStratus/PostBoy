@@ -360,17 +360,20 @@ function VariableRow({ variable, onUpdate, onDelete }: VariableRowProps) {
     onUpdate({ type: nextType });
   };
 
+  const isValueEmpty = value.trim() === '';
+
   return (
     <div className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center py-1 px-1 rounded hover:bg-surface-secondary/50">
-      <label className="flex items-center justify-center w-9 h-9 cursor-pointer">
+      <label className={`flex items-center justify-center w-9 h-9 ${isValueEmpty ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
         <input
           type="checkbox"
-          checked={enabled}
+          checked={!isValueEmpty && enabled}
+          disabled={isValueEmpty}
           onChange={(e) => {
             setEnabled(e.target.checked);
             onUpdate({ enabled: e.target.checked });
           }}
-          title="Use this variable in requests"
+          title={isValueEmpty ? 'Enter a value to enable' : 'Use this variable in requests'}
           className="w-5 h-5 rounded border-input-border"
         />
       </label>

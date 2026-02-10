@@ -3,11 +3,13 @@ import Editor from '@monaco-editor/react';
 import { useRequestStore } from '../stores/requestStore';
 import { useCollectionsStore } from '../stores/collectionsStore';
 import { useEnvironmentsStore } from '../stores/environmentsStore';
-import { useRequestTabCloseStore } from '../stores/requestTabCloseStore';
+import { useRequestTabCloseStore, type RequestPaneTabId } from '../stores/requestTabCloseStore';
 import { useThemeStore } from '../stores/themeStore';
 import { executeRequest } from '../utils/httpExecutor';
 import { getAuthHeaders } from '../utils/requestBuilder';
 import { requestTabId } from '../utils/requestTabId';
+import { isSecretLikeKey } from '../utils/secretLikeKey';
+import { getVariableRanges } from '../utils/variableSubstitution';
 import type { Request, RequestAuth, HttpMethod, RequestBody, AuthType, OAuth2GrantType } from '../types';
 import ResponseViewer from './ResponseViewer';
 import { VariableHighlight } from './VariableHighlight';
@@ -35,7 +37,14 @@ function requestDeepEqual(a: Request | null, b: Request | null): boolean {
   }
 }
 
-type RequestPaneTab = 'query-params' | 'headers' | 'body' | 'authorization' | 'scripts';
+/** Convert character offset to Monaco 1-based line/column. */
+function offsetToPosition(text: string, offset: number): { lineNumber: number; column: number } {
+  const before = text.slice(0, offset);
+  const lines = before.split('\n');
+  const lineNumber = lines.length;
+  const column = (lines[lines.length - 1]?.length ?? 0) + 1;
+  return { lineNumber, column };
+}
 
 interface RequestEditorProps {
   collection?: string;
@@ -47,17 +56,24 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
   const tabId = requestTabId(collection ?? '', folder ?? null, requestName ?? '');
   const { getRequest, createRequest, updateRequest } = useCollectionsStore();
   const { getCurrentEnvironment } = useEnvironmentsStore();
+  // Subscribe to current environment so URL/body variable highlighting updates when variables (e.g. enabled) change
+  const currentEnvironment = useEnvironmentsStore((s) => {
+    const name = s.currentEnvironment;
+    return name ? s.environments[name] : null;
+  });
   const { setCurrentRequest, setResponseForTab, setExecuting, isExecuting } = useRequestStore();
   const response = useRequestStore((s) => s.responsesByTab[tabId]?.response ?? null);
   const error = useRequestStore((s) => s.responsesByTab[tabId]?.error ?? null);
-  const { setTabState } = useRequestTabCloseStore();
+  const { setTabState, getPaneTab, setPaneTab } = useRequestTabCloseStore();
   const theme = useThemeStore((s) => s.theme);
   const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs';
 
   const [request, setRequest] = useState<Request | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [showMethodDropdown, setShowMethodDropdown] = useState(false);
-  const [requestPaneTab, setRequestPaneTab] = useState<RequestPaneTab>('query-params');
+  const [requestPaneTab, setRequestPaneTab] = useState<RequestPaneTabId>(
+    () => getPaneTab(tabId) ?? 'query-params'
+  );
   const [scriptTab, setScriptTab] = useState<'pre-request' | 'post-response'>('pre-request');
   const RESPONSE_PANE_STORAGE_KEY = 'postboy-response-pane-height';
   const [responsePaneHeight, setResponsePaneHeight] = useState(() => {
@@ -78,6 +94,11 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
   const [secretVisible, setSecretVisible] = useState<Record<string, boolean>>({});
   const [oauth2TokenLoading, setOAuth2TokenLoading] = useState(false);
   const bodyEditorContainerRef = useRef<HTMLDivElement>(null);
+  const bodyEditorRef = useRef<{ getModel(): { getValue(): string } | null; deltaDecorations(prev: string[], next: unknown[]): string[] } | null>(null);
+  const scriptEditorRef = useRef<typeof bodyEditorRef.current>(null);
+  const monacoRef = useRef<{ Range: new (sl: number, sc: number, el: number, ec: number) => unknown } | null>(null);
+  const bodyDecorationIdsRef = useRef<string[]>([]);
+  const scriptDecorationIdsRef = useRef<string[]>([]);
 
   const toggleSecretVisible = useCallback((key: string) => {
     setSecretVisible((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -113,9 +134,57 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
     document.addEventListener('mouseup', onUp);
   }, [responsePaneHeight]);
 
-  // Memoize environment to avoid recreating context on every render
-  const currentEnvironment = getCurrentEnvironment();
   const variableContext = useMemo(() => ({ environment: currentEnvironment || undefined }), [currentEnvironment]);
+
+  const updateBodyDecorations = useCallback(() => {
+    const editor = bodyEditorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    const model = editor.getModel();
+    if (!model) return;
+    const text = model.getValue();
+    const ranges = getVariableRanges(text, variableContext);
+    const decos = ranges.map(({ startOffset, endOffset, resolved }) => {
+      const start = offsetToPosition(text, startOffset);
+      const end = offsetToPosition(text, endOffset);
+      return {
+        range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
+        options: { inlineClassName: resolved ? 'monaco-variable-resolved' : 'monaco-variable-unresolved' as const },
+      };
+    });
+    bodyDecorationIdsRef.current = editor.deltaDecorations(bodyDecorationIdsRef.current, decos);
+  }, [variableContext]);
+
+  const updateScriptDecorations = useCallback(() => {
+    const editor = scriptEditorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    const model = editor.getModel();
+    if (!model) return;
+    const text = model.getValue();
+    const ranges = getVariableRanges(text, variableContext);
+    const decos = ranges.map(({ startOffset, endOffset, resolved }) => {
+      const start = offsetToPosition(text, startOffset);
+      const end = offsetToPosition(text, endOffset);
+      return {
+        range: new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column),
+        options: { inlineClassName: resolved ? 'monaco-variable-resolved' : 'monaco-variable-unresolved' as const },
+      };
+    });
+    scriptDecorationIdsRef.current = editor.deltaDecorations(scriptDecorationIdsRef.current, decos);
+  }, [variableContext]);
+
+  useEffect(() => {
+    if (requestPaneTab === 'body' && request?.body?.mode === 'raw') {
+      updateBodyDecorations();
+    }
+  }, [request?.body?.raw, variableContext, requestPaneTab, request?.body?.mode, updateBodyDecorations]);
+
+  useEffect(() => {
+    if (requestPaneTab === 'scripts') {
+      updateScriptDecorations();
+    }
+  }, [request?.preRequestScript, request?.postResponseScript, scriptTab, variableContext, requestPaneTab, updateScriptDecorations]);
 
   useEffect(() => {
     if (collection && requestName) {
@@ -455,7 +524,10 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
           ].map(({ id, label }) => (
             <button
               key={id}
-              onClick={() => setRequestPaneTab(id)}
+              onClick={() => {
+                setPaneTab(tabId, id);
+                setRequestPaneTab(id);
+              }}
               className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-sm border-b-2 transition-colors ${
                 requestPaneTab === id
                   ? 'border-primary text-text-primary font-semibold bg-surface-secondary'
@@ -633,9 +705,9 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                       value="Cookie"
                       className="border border-border rounded px-2 py-1.5 h-9 bg-surface-secondary text-text-secondary text-sm cursor-default"
                     />
-                    <div className="relative bg-input-bg rounded border border-input-border h-9 min-w-0">
+                    <div className="relative flex items-center min-w-0">
                       <input
-                        type="text"
+                        type={secretVisible.headersCookie ? 'text' : 'password'}
                         value={cookieValue}
                         onChange={(e) => {
                           const v = e.target.value;
@@ -658,15 +730,31 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                           }
                         }}
                         placeholder={placeholder}
-                        className="w-full h-full rounded px-2 py-1.5 bg-transparent font-mono text-xs border-0"
+                        className="h-9 flex-1 min-w-0 rounded-l border border-input-border border-r-0 px-3 py-1.5 bg-input-bg text-text-primary font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:z-10"
                         title="Paste your session cookie here; required for cookie auth when using proxy (cross-origin)."
                       />
+                      <button
+                        type="button"
+                        onClick={() => toggleSecretVisible('headersCookie')}
+                        className="h-9 px-2.5 rounded-r border border-input-border border-l-0 bg-input-bg text-primary hover:text-primary-hover focus:outline-none focus:ring-2 focus:ring-primary [&_svg]:text-current"
+                        title={secretVisible.headersCookie ? 'Hide' : 'Show'}
+                        aria-label={secretVisible.headersCookie ? 'Hide value' : 'Show value'}
+                      >
+                        {secretVisible.headersCookie ? (
+                          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 10Q12 18 22 10M3 11L3 14M5 12L5 15M7 14L7 17M9 15L9 18M12 18L12 21M15 15L15 18M17 14L17 17M19 12L19 15M21 11L21 14" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        )}
+                      </button>
                     </div>
                     <div className="w-9 h-9" aria-hidden="true" />
                   </div>
                 );
               })()}
-              {request.headers.map((header, index) => (
+              {request.headers.map((header, index) => {
+                // Default to hidden for potential secrets (password, token, auth, etc.)
+                const effectiveHidden = header.valueHidden ?? (isSecretLikeKey(header.key) ? true : false);
+                return (
                 <div key={index} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
                   <label className="flex items-center justify-center w-9 h-9 cursor-pointer">
                     <input
@@ -691,37 +779,70 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                     placeholder="Key"
                     className="border border-input-border rounded px-2 py-1.5 h-9 bg-input-bg"
                   />
-                  <div className="relative bg-input-bg rounded border border-input-border h-9">
-                    <input
-                      type="text"
-                      value={header.value}
-                      onChange={(e) => {
-                        const wasFocused = document.activeElement === e.target;
-                        const newHeaders = [...request.headers];
-                        newHeaders[index].value = e.target.value;
-                        setRequest({ ...request, headers: newHeaders });
-                        if (wasFocused && e.target instanceof HTMLInputElement) {
-                          requestAnimationFrame(() => {
-                            e.target.focus();
-                            const len = e.target.value.length;
-                            e.target.setSelectionRange(len, len);
-                          });
-                        }
-                      }}
-                      placeholder="Value"
-                      className="w-full h-full rounded px-2 py-1.5 bg-transparent relative z-10 border-0"
-                      style={{ color: 'transparent', caretColor: 'var(--color-text-primary)' }}
-                    />
-                    <div className="absolute inset-0 pointer-events-none px-2 py-1.5 flex items-center overflow-hidden z-20" style={{ color: 'var(--color-text-primary)' }}>
-                      {header.value ? (
-                        <VariableHighlight
-                          text={header.value}
-                          context={variableContext}
+                  <div className="relative flex items-center min-w-0">
+                    {effectiveHidden ? (
+                      <input
+                        type="password"
+                        value={header.value}
+                        onChange={(e) => {
+                          const newHeaders = [...request.headers];
+                          newHeaders[index].value = e.target.value;
+                          setRequest({ ...request, headers: newHeaders });
+                        }}
+                        placeholder="Value"
+                        className="h-9 flex-1 min-w-0 rounded-l border border-input-border border-r-0 px-3 py-1.5 bg-input-bg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:z-10"
+                      />
+                    ) : (
+                      <div className="relative flex-1 min-w-0 flex h-9 rounded-l border border-input-border border-r-0 bg-input-bg">
+                        <input
+                          type="text"
+                          value={header.value}
+                          onChange={(e) => {
+                            const wasFocused = document.activeElement === e.target;
+                            const newHeaders = [...request.headers];
+                            newHeaders[index].value = e.target.value;
+                            setRequest({ ...request, headers: newHeaders });
+                            if (wasFocused && e.target instanceof HTMLInputElement) {
+                              requestAnimationFrame(() => {
+                                e.target.focus();
+                                const len = e.target.value.length;
+                                e.target.setSelectionRange(len, len);
+                              });
+                            }
+                          }}
+                          placeholder="Value"
+                          className="flex-1 min-w-0 rounded-l px-3 py-1.5 bg-transparent relative z-10 border-0 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          style={{ color: 'transparent', caretColor: 'var(--color-text-primary)' }}
                         />
+                        <div className="absolute inset-0 pointer-events-none px-3 py-1.5 flex items-center overflow-hidden z-20" style={{ color: 'var(--color-text-primary)' }}>
+                          {header.value ? (
+                            <VariableHighlight
+                              text={header.value}
+                              context={variableContext}
+                            />
+                          ) : (
+                            <span style={{ color: 'var(--color-text-muted)' }}>Value</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newHeaders = [...request.headers];
+                        newHeaders[index] = { ...newHeaders[index], valueHidden: !effectiveHidden };
+                        setRequest({ ...request, headers: newHeaders });
+                      }}
+                      className="h-9 px-2.5 rounded-r border border-input-border border-l-0 bg-input-bg text-primary hover:text-primary-hover focus:outline-none focus:ring-2 focus:ring-primary [&_svg]:text-current"
+                      title={effectiveHidden ? 'Show' : 'Hide'}
+                      aria-label={effectiveHidden ? 'Show value' : 'Hide value'}
+                    >
+                      {effectiveHidden ? (
+                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                       ) : (
-                        <span style={{ color: 'var(--color-text-muted)' }}>Value</span>
+                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M2 10Q12 18 22 10M3 11L3 14M5 12L5 15M7 14L7 17M9 15L9 18M12 18L12 21M15 15L15 18M17 14L17 17M19 12L19 15M21 11L21 14" /></svg>
                       )}
-                    </div>
+                    </button>
                   </div>
                   <button
                     type="button"
@@ -739,12 +860,13 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                     </svg>
                   </button>
                 </div>
-              ))}
+                );
+              })}
               <button
                 onClick={() => {
                   setRequest({
                     ...request,
-                    headers: [...request.headers, { key: '', value: '', enabled: true }],
+                    headers: [...request.headers, { key: '', value: '', enabled: true, valueHidden: false }],
                   });
                 }}
                 className="text-primary hover:text-primary-hover text-sm"
@@ -1463,6 +1585,12 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                         body: { ...request.body!, raw: value || '' },
                       });
                     }}
+                    onMount={(editor, monaco) => {
+                      bodyEditorRef.current = editor as typeof bodyEditorRef.current;
+                      monacoRef.current = monaco as unknown as typeof monacoRef.current;
+                      updateBodyDecorations();
+                      editor.getModel()?.onDidChangeContent(() => updateBodyDecorations());
+                    }}
                     options={{
                       minimap: { enabled: false },
                       fontSize: 14,
@@ -1674,6 +1802,12 @@ export default function RequestEditor({ collection, folder, requestName }: Reque
                   } else {
                     setRequest({ ...request, postResponseScript: value || '' });
                   }
+                }}
+                onMount={(editor, monaco) => {
+                  scriptEditorRef.current = editor as typeof scriptEditorRef.current;
+                  if (!monacoRef.current) monacoRef.current = monaco as unknown as typeof monacoRef.current;
+                  updateScriptDecorations();
+                  editor.getModel()?.onDidChangeContent(() => updateScriptDecorations());
                 }}
                 options={{
                   minimap: { enabled: false },

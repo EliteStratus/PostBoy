@@ -62,10 +62,10 @@ export function extractVariables(text: string): string[] {
 export function isVariableResolved(variableName: string, context: VariableContext): boolean {
   const trimmed = variableName.trim();
   
-  // Check environment variables first (only enabled count as resolved for requests)
+  // Environment: only enabled variables with a non-empty value count as resolved (blue in UI)
   if (context.environment) {
     const envVar = context.environment.variables.find(
-      v => v.key === trimmed && v.enabled
+      v => v.key === trimmed && v.enabled && v.value.trim() !== ''
     );
     if (envVar) {
       return true;
@@ -83,4 +83,24 @@ export function isVariableResolved(variableName: string, context: VariableContex
   }
   
   return false;
+}
+
+/** Used by Monaco editors to style {{variable}} ranges (resolved vs unresolved). */
+export function getVariableRanges(
+  text: string,
+  context: VariableContext
+): Array<{ startOffset: number; endOffset: number; resolved: boolean }> {
+  if (!text) return [];
+  const variableRegex = /\{\{([^}]+)\}\}/g;
+  const ranges: Array<{ startOffset: number; endOffset: number; resolved: boolean }> = [];
+  let match;
+  while ((match = variableRegex.exec(text)) !== null) {
+    const varName = match[1].trim();
+    ranges.push({
+      startOffset: match.index,
+      endOffset: match.index + match[0].length,
+      resolved: isVariableResolved(varName, context),
+    });
+  }
+  return ranges;
 }
